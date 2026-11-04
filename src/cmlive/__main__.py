@@ -109,6 +109,27 @@ def gtfs(args) -> None:
     print(refresh(s.database_url, s.gtfs_urls, args.zip or None))
 
 
+def export(args) -> None:
+    """Exporta posições e chegadas para Parquet via DuckDB (extensão postgres)."""
+    import duckdb
+
+    s = get_settings()
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+    con.execute("INSTALL postgres; LOAD postgres;")
+    con.execute(f"ATTACH '{s.database_url}' AS pg (TYPE postgres, READ_ONLY)")
+    since = f"now() - INTERVAL '{int(args.days)} days'"
+    for name, sql in {
+        "stop_arrivals": f"SELECT * FROM pg.public.stop_arrivals WHERE scheduled_at > {since}",
+        "vehicle_positions": f"SELECT * FROM pg.public.vehicle_positions WHERE ts > {since}",
+        "delay_hourly": "SELECT * FROM pg.public.delay_hourly",
+    }.items():
+        path = out / f"{name}.parquet"
+        con.execute(f"COPY ({sql}) TO '{path}' (FORMAT parquet, COMPRESSION zstd)")
+        print(path, con.execute(f"SELECT count(*) FROM '{path}'").fetchone()[0], "linhas")
+
+
 def web(args) -> None:
     import uvicorn
 
@@ -131,6 +152,9 @@ def main() -> None:
     sp.add_argument("--speed", type=float, default=10.0, help="0 = o mais rápido possível")
     sp = sub.add_parser("gtfs")
     sp.add_argument("--zip", help="ficheiro local em vez de descarregar")
+    sp = sub.add_parser("export")
+    sp.add_argument("--days", type=int, default=7)
+    sp.add_argument("--out", default="data/export")
     sp = sub.add_parser("web")
     sp.add_argument("--host", default="0.0.0.0")
     sp.add_argument("--port", type=int, default=8000)
@@ -138,6 +162,8 @@ def main() -> None:
 
     if args.cmd == "gtfs":
         gtfs(args)
+    elif args.cmd == "export":
+        export(args)
     elif args.cmd == "web":
         web(args)
     else:
