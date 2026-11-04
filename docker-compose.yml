@@ -1,0 +1,88 @@
+name: cmlive
+
+x-app: &app
+  build: .
+  restart: unless-stopped
+  environment: &env
+    CMLIVE_DATABASE_URL: postgresql://cmlive:cmlive@timescaledb:5432/cmlive
+    CMLIVE_KAFKA_BOOTSTRAP: redpanda:9092
+  depends_on:
+    timescaledb: { condition: service_healthy }
+    redpanda: { condition: service_healthy }
+    topics: { condition: service_completed_successfully }
+
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda start --smp 1 --memory 512M --overprovisioned --mode dev-container
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+    ports: ["19092:19092"]
+    volumes: [redpanda:/var/lib/redpanda/data]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 5s
+      retries: 30
+
+  # Cria os tópicos (6 partições, retenção de 7 dias: permite reprocessar uma semana).
+  topics:
+    image: redpandadata/redpanda:v24.2.7
+    depends_on: { redpanda: { condition: service_healthy } }
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        rpk topic create vehicle-positions stop-arrivals -X brokers=redpanda:9092
+        -p 6 -c retention.ms=604800000 || true
+
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: cmlive
+      POSTGRES_PASSWORD: cmlive
+      POSTGRES_DB: cmlive
+    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "max_wal_size=4GB"]
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmlive -d cmlive"]
+      interval: 3s
+      retries: 30
+
+  # Carrega o GTFS (descarrega da API; ou CMLIVE_GTFS_ZIP=/data/gtfs.zip para um ficheiro local).
+  gtfs:
+    <<: *app
+    restart: on-failure
+    command: ["gtfs", "--zip", "${CMLIVE_GTFS_ZIP:-}"]
+    volumes: ["./data:/data:ro"]
+
+  collector:
+    <<: *app
+    command: ["collector"]
+    environment:
+      <<: *env
+      CMLIVE_RECORD_DIR: ${CMLIVE_RECORD_DIR:-}
+    volumes: ["./data/recordings:/data/recordings"]
+
+  ingestor:
+    <<: *app
+    command: ["ingestor"]
+
+  delay-engine:
+    <<: *app
+    command: ["delay-engine"]
+
+  web:
+    <<: *app
+    command: ["web"]
+    ports: ["8000:8000"]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: [observability]
+    volumes: ["./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+
+volumes:
+  redpanda:
+  pgdata:

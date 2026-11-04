@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carris Metropolitana Live</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root { --bg:#ffffff; --fg:#1d1d1f; --muted:#6b6b70; --card:rgba(255,255,255,.94); --border:#e3e3e8;
+          --ok:#1a9e5c; --warn:#e8a317; --bad:#d6342c; --early:#3478d6; --none:#8e8e93; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111113; --fg:#f2f2f5; --muted:#a0a0a8; --card:rgba(28,28,31,.94); --border:#34343a; }
+  }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+               font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #map { position:absolute; inset:0; }
+  .panel { position:absolute; top:12px; left:12px; z-index:2; background:var(--card);
+           border:1px solid var(--border); border-radius:10px; padding:12px 14px; width:280px;
+           max-width:calc(100vw - 52px); box-shadow:0 2px 10px rgba(0,0,0,.12); }
+  .panel h1 { font-size:15px; margin:0 0 6px; }
+  .panel a { color:inherit; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; margin:8px 0; }
+  .stat b { display:block; font-size:18px; font-variant-numeric:tabular-nums; }
+  .stat span { color:var(--muted); font-size:12px; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--muted); }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+  input { width:100%; box-sizing:border-box; padding:6px 8px; border-radius:6px; border:1px solid var(--border);
+          background:transparent; color:inherit; margin-top:6px; }
+  #status { font-size:12px; color:var(--muted); margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="panel">
+  <h1>Carris Metropolitana · ao vivo</h1>
+  <div class="stats">
+    <div class="stat"><b id="n">–</b><span>veículos no mapa</span></div>
+    <div class="stat"><b id="rate">–</b><span>atualizações/min</span></div>
+    <div class="stat"><b id="lat-v">–</b><span>idade p50 (veículo→browser)</span></div>
+    <div class="stat"><b id="lat-c">–</b><span>p50 coletor→browser</span></div>
+  </div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--early)"></i>adiantado</span>
+    <span><i class="dot" style="background:var(--ok)"></i>≤ 5 min</span>
+    <span><i class="dot" style="background:var(--warn)"></i>5–10 min</span>
+    <span><i class="dot" style="background:var(--bad)"></i>&gt; 10 min</span>
+    <span><i class="dot" style="background:var(--none)"></i>sem dados</span>
+  </div>
+  <input id="filter" placeholder="Filtrar por linha (ex.: 1604)" inputmode="numeric">
+  <div id="status">a ligar…</div>
+  <div style="margin-top:6px;font-size:12px"><a href="/analytics">Análise de atrasos →</a></div>
+</div>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const map = new maplibregl.Map({
+  container: 'map',
+  center: [-9.10, 38.70], zoom: 10,
+  style: {
+    version: 8,
+    sources: { osm: { type: 'raster', tileSize: 256, maxzoom: 19,
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      attribution: '© OpenStreetMap · dados: Carris Metropolitana (CC BY 4.0)' } },
+    layers: [{ id: 'osm', type: 'raster', source: 'osm',
+               paint: { 'raster-saturation': -0.6, 'raster-opacity': 0.9 } }]
+  }
+});
+
+// Estado: cada veículo tem posição "de" e "para"; animamos entre elas.
+const vehicles = new Map();
+const ANIM_MS = 2000;
+let filter = '';
+let updates = [];
+const samples = { vehicle_to_browser: [], collector_to_browser: [], log_to_browser: [] };
+
+function upsert(v, now) {
+  const cur = vehicles.get(v.vehicle_id);
+  if (cur && cur.data.ts >= v.ts && v.delay_s === cur.data.delay_s) return;
+  const from = cur ? currentPos(cur, now) : [v.lon, v.lat];
+  vehicles.set(v.vehicle_id, { data: v, from, to: [v.lon, v.lat], t0: now });
+  const t = Date.now() / 1000;
+  if (!cur || cur.data.ts < v.ts) {
+    samples.vehicle_to_browser.push(t - v.ts);
+    samples.collector_to_browser.push(t - v.collected_at);
+    if (v.log_ts) samples.log_to_browser.push(t - v.log_ts);
+    updates.push(t);
+  }
+}
+function currentPos(s, now) {
+  const k = Math.min(1, (now - s.t0) / ANIM_MS);
+  const e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k + 2, 2) / 2;
+  return [s.from[0] + (s.to[0] - s.from[0]) * e, s.from[1] + (s.to[1] - s.from[1]) * e];
+}
+function geojson(now) {
+  const features = [];
+  for (const [id, s] of vehicles) {
+    if (filter && s.data.line_id !== filter) continue;
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: currentPos(s, now) },
+      properties: { id, line: s.data.line_id || '', delay: s.data.delay_s ?? -99999,
+                    bearing: s.data.bearing ?? 0, status: s.data.current_status || '' } });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+map.on('load', () => {
+  map.addSource('v', { type: 'geojson', data: geojson(performance.now()) });
+  map.addLayer({ id: 'v', type: 'circle', source: 'v', paint: {
+    'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 2.5, 14, 7],
+    'circle-stroke-width': 1, 'circle-stroke-color': '#fff',
+    'circle-color': ['case',
+      ['==', ['get', 'delay'], -99999], css('--none'),
+      ['<', ['get', 'delay'], -60], css('--early'),
+      ['<=', ['get', 'delay'], 300], css('--ok'),
+      ['<=', ['get', 'delay'], 600], css('--warn'), css('--bad')] } });
+  map.addLayer({ id: 'lbl', type: 'symbol', source: 'v', minzoom: 13, layout: {
+    'text-field': ['get', 'line'], 'text-size': 11, 'text-offset': [0, 1.1] },
+    paint: { 'text-halo-color': '#fff', 'text-halo-width': 1.2 } });
+  map.on('click', 'v', e => {
+    const p = e.features[0].properties, d = vehicles.get(p.id).data;
+    const delay = d.delay_s == null ? 'sem dados' : `${(d.delay_s / 60).toFixed(1)} min`;
+    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(
+      `<b>Linha ${d.line_id ?? '?'}</b><br>Veículo ${d.vehicle_id}<br>` +
+      `Paragem ${d.stop_id ?? '?'} (${d.current_status ?? '?'})<br>Atraso: ${delay}<br>` +
+      `Posição de há ${Math.round(Date.now()/1000 - d.ts)} s`).addTo(map);
+  });
+  const frame = () => { map.getSource('v').setData(geojson(performance.now())); requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
+});
+
+function connect() {
+  const es = new EventSource('/api/stream');
+  const status = document.getElementById('status');
+  es.addEventListener('snapshot', e => {
+    const msg = JSON.parse(e.data), now = performance.now();
+    msg.vehicles.forEach(v => upsert(v, now));
+    status.textContent = 'ligado · SSE';
+  });
+  es.addEventListener('delta', e => {
+    const msg = JSON.parse(e.data), now = performance.now();
+    msg.vehicles.forEach(v => upsert(v, now));
+    msg.removed.forEach(id => vehicles.delete(id));
+  });
+  es.onerror = () => { status.textContent = 'ligação perdida, a religar…'; };
+}
+connect();
+
+const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+const fmt = s => s == null ? '–' : (s < 60 ? `${s.toFixed(1)} s` : `${(s/60).toFixed(1)} min`);
+setInterval(() => {
+  const t = Date.now() / 1000;
+  updates = updates.filter(x => t - x < 60);
+  document.getElementById('n').textContent = vehicles.size;
+  document.getElementById('rate').textContent = updates.length;
+  document.getElementById('lat-v').textContent = fmt(median(samples.vehicle_to_browser.slice(-500)));
+  document.getElementById('lat-c').textContent = fmt(median(samples.collector_to_browser.slice(-500)));
+}, 1000);
+setInterval(() => {
+  const body = JSON.stringify(samples);
+  for (const k in samples) samples[k] = [];
+  fetch('/api/latency', { method: 'POST', headers: { 'content-type': 'application/json' }, body }).catch(() => {});
+}, 10000);
+document.getElementById('filter').addEventListener('input', e => { filter = e.target.value.trim(); });
+</script>
+</body>
+</html>
