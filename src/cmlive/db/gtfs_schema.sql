@@ -13,7 +13,7 @@ CREATE TABLE {schema}.routes (
 
 CREATE TABLE {schema}.stops (
     stop_id text PRIMARY KEY, name text, lat double precision, lon double precision,
-    municipality text
+    municipality text, legacy_ids text
 );
 
 CREATE TABLE {schema}.trips (

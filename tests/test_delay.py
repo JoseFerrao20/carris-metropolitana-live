@@ -157,3 +157,21 @@ def test_detection_invariant_to_shuffle_and_duplicates(rnd: random.Random, dup_i
     rnd.shuffle(noisy)
     assert detect(noisy) == expected
     assert [s for s, *_ in expected] == ["A", "B", "C", "D"]
+
+
+def test_first_observation_inside_geofence_is_not_an_arrival():
+    """Ao arrancar o serviço, um veículo já junto à paragem não tem chegada medível."""
+    coords = {"A": (38.7, -9.2)}
+    tr = VehicleTracker("41|1", stop_coords=coords.get, geofence_m=40)
+    evs = [
+        P(T0, "A", "INCOMING_AT", lat=38.7001),
+        P(T0 + 20, "A", "INCOMING_AT", lat=38.7001),
+        P(T0 + 40, "B", lat=38.71),
+    ]
+    arr = [a for e in evs for a in tr.update(e)]
+    assert [(a.stop_id, a.method, a.observed_ts) for a in arr] == [("A", "departed", T0 + 30)]
+
+
+def test_missing_stop_id_is_not_evidence_of_passing():
+    arr = run([P(T0, "A", "INCOMING_AT"), P(T0 + 20, None), P(T0 + 40, "A", "STOPPED_AT")])
+    assert [(a.stop_id, a.method) for a in arr] == [("A", "stopped")]

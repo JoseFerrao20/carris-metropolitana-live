@@ -153,6 +153,7 @@ async def test_end_to_end_delay_dedup_reorder_idempotent():
         topic_positions=topic,
         topic_arrivals=f"{topic}-arrivals",
         reorder_window_s=30,
+        kafka_group_prefix=f"test-{uuid.uuid4().hex[:8]}-",
     )
     clean = _trajectory(vid, trip_id, stops)
     _cleanup(trip_id)

@@ -60,10 +60,36 @@ agency_id             41 | 42 | 43 | 44 (quatro operadores)
 5. **O `/vehicles` devolve 404 com `[]`** quando a cache interna está vazia. Isto
    conta como "API indisponível", não como "zero veículos".
 
+## Confirmado com dados reais (2026-11-04, ~17:15 UTC)
+
+Depois de o domínio ter sido autorizado, verifiquei tudo contra a API real:
+
+| O quê | Documentação / código antigo | Realidade |
+|---|---|---|
+| `timestamp` | "ms" no texto, segundos no exemplo | **milissegundos** (`1793812304000`) |
+| `id` do veículo | `"41\|1160"` | `"[LA77N]1886"` (`[operador]número`) |
+| `trip_id` | `1503_0_2_..._21NBI` | `[7DQC0][LA77N]1252_0_3_1700_1729_0_1` ou `[FBZQZ][A2L1N]4001_0_3\|1000\|0710` |
+| `stop_id` | igual ao GTFS | **ids antigos** (`030037`), e o GTFS atual usa `330037` |
+| paragem desconhecida | — | sentinela literal `"UNAVAILABLE_STOP_ID"` |
+| coordenadas | — | algumas posições vêm a `(0, 0)` |
+| `/gtfs` | URL canónico | `307` → `/v2/gtfs` |
+| GTFS | publicado pela CM | publicado pela **TML (plataforma GO)**, com `plans.txt` e `legacy_ids` em `stops.txt` |
+
+Consequências no código:
+
+- **`trip_id` mantém-se completo.** Com os prefixos `[plano][operador]`, 1117/1117
+  viagens do tempo real existem tal e qual no GTFS. A versão anterior retirava o
+  prefixo e teria partido o *join* com o horário.
+- **`stop_id` convertido via `stops.legacy_ids`.** Sem conversão, só 58% dos pares
+  (viagem, paragem) do tempo real existiam no GTFS; com a conversão, 97,7%. O que
+  sobra é `UNAVAILABLE_STOP_ID`, tratado como "sem paragem" (não conta como
+  passagem pela paragem anterior).
+- **A linha** vem de `routes.route_short_name` (o GTFS da TML não tem `line_id`).
+
 ## Acesso a partir do ambiente de desenvolvimento
 
-Nesta sessão, a política de rede **bloqueia** `api.carrismetropolitana.pt` e
-`go.tmlmobilidade.pt` (o proxy responde 403 ao CONNECT). Consequências:
+Na primeira fase deste trabalho, a política de rede **bloqueava** `api.carrismetropolitana.pt`
+(o proxy respondia 403 ao CONNECT). Na altura:
 
 - O código é escrito contra o esquema confirmado acima e testado com *fixtures*
   baseadas nos exemplos oficiais.

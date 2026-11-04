@@ -133,7 +133,7 @@ def load_zip(conn: psycopg.Connection, zip_path: Path, source_url: str = "") -> 
         stats["stops"] = _copy(
             cur,
             f"{STAGING}.stops",
-            ["stop_id", "name", "lat", "lon", "municipality"],
+            ["stop_id", "name", "lat", "lon", "municipality", "legacy_ids"],
             (
                 (
                     r["stop_id"],
@@ -141,6 +141,7 @@ def load_zip(conn: psycopg.Connection, zip_path: Path, source_url: str = "") -> 
                     r.get("stop_lat"),
                     r.get("stop_lon"),
                     r.get("municipality_name"),
+                    r.get("legacy_ids"),  # GTFS da TML: ids antigos que o tempo real ainda usa
                 )
                 for r in _rows(zf, "stops.txt")
             ),
@@ -220,7 +221,9 @@ def current_sha(conn: psycopg.Connection) -> str | None:
         return row[0] if row else None
 
 
-def refresh(database_url: str, urls: Iterable[str], zip_path: str | None = None) -> dict:
+def refresh(
+    database_url: str, urls: Iterable[str], zip_path: str | None = None, force: bool = False
+) -> dict:
     """Descarrega (ou usa um ficheiro local) e carrega só se o conteúdo mudou."""
     with tempfile.TemporaryDirectory() as tmp, psycopg.connect(database_url) as conn:
         if zip_path:
@@ -228,7 +231,7 @@ def refresh(database_url: str, urls: Iterable[str], zip_path: str | None = None)
         else:
             path = Path(tmp) / "gtfs.zip"
             url = download(urls, path)
-        if current_sha(conn) == sha256_file(path):
+        if not force and current_sha(conn) == sha256_file(path):
             log.info("GTFS sem alterações (%s)", url)
             return {"unchanged": True}
         return load_zip(conn, path, url)

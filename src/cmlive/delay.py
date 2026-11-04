@@ -113,8 +113,9 @@ class VehicleTracker:
        entre a observação anterior e esta (método ``stopped``).
     2. ``stop_id`` muda de X para Y sem termos registado X ⇒ o veículo passou por X
        sem parar (ou não o vimos parado): chegada no ponto médio (``passed``).
-    3. Se a primeira observação da viagem já é ``STOPPED_AT X`` (ex.: no terminal),
-       não sabemos quando chegou: registamos a partida de X (``departed``).
+    3. Se a primeira observação da viagem já é ``STOPPED_AT X`` ou já está dentro da
+       geofence de X (ex.: no terminal, ou ao arrancar o serviço), não sabemos quando
+       chegou: registamos a partida de X (``departed``).
     4. *Geofence* opcional: a ≤ N m da paragem conta como chegada (``geofence``).
 
     A ``uncertainty_s`` é metade do intervalo entre as duas observações que
@@ -160,10 +161,10 @@ class VehicleTracker:
             self.trip_id, self.emitted, self.unknown_arrival = pos.trip_id, set(), None
             self.stop_id, self.status, self.ts = pos.stop_id, pos.current_status, pos.ts
             self.line_id, self.route_id = pos.line_id, pos.route_id
-            if pos.current_status == "STOPPED_AT" and pos.stop_id:
+            # Primeira observação da viagem: se já está parado ou dentro da geofence,
+            # não sabemos há quanto tempo; só a partida dessa paragem é medível.
+            if pos.stop_id and (pos.current_status == "STOPPED_AT" or self._in_geofence(pos)):
                 self.unknown_arrival = pos.stop_id
-            elif pos.trip_id and pos.stop_id:
-                self._maybe_geofence(pos, pos.ts, out)
             return out
 
         if not self.trip_id or self.ts is None:
@@ -173,12 +174,13 @@ class VehicleTracker:
         prev_ts, prev_stop = self.ts, self.stop_id
 
         # Regra 2/3: saiu da paragem anterior.
-        if prev_stop and pos.stop_id != prev_stop and prev_stop not in self.emitted:
+        if prev_stop and pos.stop_id and pos.stop_id != prev_stop and prev_stop not in self.emitted:
             method = "departed" if self.unknown_arrival == prev_stop else "passed"
             a = self._arrival(prev_stop, prev_ts, pos.ts, method)
             if a:
                 out.append(a)
 
+        # Ainda na paragem cuja chegada não vimos: nada a medir até sair.
         # Regra 1: parado na paragem atual.
         if (
             pos.current_status == "STOPPED_AT"
@@ -192,15 +194,23 @@ class VehicleTracker:
         elif pos.stop_id:
             self._maybe_geofence(pos, prev_ts, out)
 
-        self.stop_id, self.status, self.ts = pos.stop_id, pos.current_status, pos.ts
+        # Sem stop_id (sentinela da fonte): mantém a última paragem conhecida.
+        if pos.stop_id:
+            self.stop_id, self.status = pos.stop_id, pos.current_status
+        self.ts = pos.ts
         self.line_id, self.route_id = pos.line_id or self.line_id, pos.route_id or self.route_id
         return out
 
-    def _maybe_geofence(self, pos: VehiclePosition, prev_ts: float, out: list[Arrival]) -> None:
-        if not self.stop_coords or not pos.stop_id or pos.stop_id in self.emitted:
-            return
+    def _in_geofence(self, pos: VehiclePosition) -> bool:
+        if not self.stop_coords or not pos.stop_id:
+            return False
         coords = self.stop_coords(pos.stop_id)
-        if coords and haversine_m(pos.lat, pos.lon, *coords) <= self.geofence_m:
+        return bool(coords) and haversine_m(pos.lat, pos.lon, *coords) <= self.geofence_m
+
+    def _maybe_geofence(self, pos: VehiclePosition, prev_ts: float, out: list[Arrival]) -> None:
+        if pos.stop_id in self.emitted or pos.stop_id == self.unknown_arrival:
+            return
+        if self._in_geofence(pos):
             a = self._arrival(pos.stop_id, prev_ts, pos.ts, "geofence")
             if a:
                 out.append(a)

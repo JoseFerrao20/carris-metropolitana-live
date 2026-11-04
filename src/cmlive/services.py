@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import time
 from collections import deque
@@ -43,7 +44,7 @@ def _consumer(settings: Settings, group: str, *topics: str):
     return AIOKafkaConsumer(
         *topics,
         bootstrap_servers=settings.kafka_bootstrap,
-        group_id=group,
+        group_id=settings.kafka_group_prefix + group,
         enable_auto_commit=False,  # commit manual, só depois de escrever na BD
         auto_offset_reset="earliest",
         max_poll_records=settings.ingest_batch_size,
@@ -191,7 +192,11 @@ async def run_delay_engine(settings: Settings, stop: asyncio.Event, producer=Non
                 stats["consumed"] += len(recs)
                 for r in recs:
                     with contextlib.suppress(orjson.JSONDecodeError, TypeError):
-                        detector.push(VehiclePosition.from_json(r.value))
+                        pos = VehiclePosition.from_json(r.value)
+                        canon = repo.canonical_stop(pos.stop_id)
+                        if canon != pos.stop_id:
+                            pos = dataclasses.replace(pos, stop_id=canon)
+                        detector.push(pos)
                     offsets.seen(tp, r.offset, now)
             await repo.refresh_if_needed()
             arrivals = detector.poll(now)

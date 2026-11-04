@@ -106,7 +106,7 @@ def gtfs(args) -> None:
     from .gtfs_loader import refresh
 
     s = get_settings()
-    print(refresh(s.database_url, s.gtfs_urls, args.zip or None))
+    print(refresh(s.database_url, s.gtfs_urls, args.zip or None, force=args.force))
 
 
 def export(args) -> None:
@@ -182,6 +182,7 @@ def main() -> None:
     sp.add_argument("--speed", type=float, default=10.0, help="0 = o mais rápido possível")
     sp = sub.add_parser("gtfs")
     sp.add_argument("--zip", help="ficheiro local em vez de descarregar")
+    sp.add_argument("--force", action="store_true", help="recarrega mesmo sem alterações")
     sp = sub.add_parser("export")
     sp.add_argument("--days", type=int, default=7)
     sp.add_argument("--out", default="data/export")

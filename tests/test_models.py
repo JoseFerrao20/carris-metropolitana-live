@@ -39,9 +39,14 @@ def test_seconds_and_millis_agree(sec):
     assert normalize_timestamp(sec) == normalize_timestamp(sec * 1000) == sec
 
 
-def test_normalize_trip_id_strips_plan_prefix():
-    assert normalize_trip_id("[21NBI]1503_0_2_1700") == "1503_0_2_1700"
-    assert normalize_trip_id("1503_0_2_1700") == "1503_0_2_1700"
+def test_normalize_trip_id_keeps_plan_and_agency_prefix():
+    # Formato real (tempo real e GTFS coincidem só com o id completo)
+    real = "[7DQC0][LA77N]1252_0_3_1700_1729_0_1"
+    assert normalize_trip_id(real) == real
+    assert (
+        normalize_trip_id(" [FBZQZ][A2L1N]4001_0_3|1000|0710 ")
+        == "[FBZQZ][A2L1N]4001_0_3|1000|0710"
+    )
     assert normalize_trip_id("") is None
     assert normalize_trip_id(None) is None
 
@@ -90,3 +95,25 @@ def test_null_optional_fields_are_tolerated():
 def test_json_roundtrip():
     pos, _ = parse_vehicle(make_raw(), collected_at=NOW)
     assert VehiclePosition.from_json(pos.to_json()) == pos
+
+
+def test_parse_real_live_payload():
+    """Amostra real de /v2/vehicles recolhida a 2026-11-04 (timestamp em ms, ids com prefixo)."""
+    import json
+    from pathlib import Path
+
+    items = json.loads(
+        (Path(__file__).parent / "fixtures" / "vehicles_live_sample.json").read_text()
+    )
+    for raw in items:
+        collected = raw["timestamp"] / 1000 + 60
+        pos, reason = parse_vehicle(raw, collected_at=collected)
+        assert reason is None
+        assert pos.ts == raw["timestamp"] // 1000
+        assert pos.trip_id == raw["trip_id"] and pos.trip_id.startswith("[")
+        assert pos.vehicle_id == raw["id"]
+
+
+def test_unavailable_stop_sentinel_becomes_none():
+    pos, _ = parse_vehicle(make_raw(stop_id="UNAVAILABLE_STOP_ID"), collected_at=NOW)
+    assert pos.stop_id is None

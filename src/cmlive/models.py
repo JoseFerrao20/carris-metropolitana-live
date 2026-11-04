@@ -6,7 +6,6 @@ Ver ``docs/API.md`` para as particularidades da fonte que justificam cada regra.
 from __future__ import annotations
 
 import math
-import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -17,8 +16,6 @@ LAT_RANGE = (37.5, 39.5)
 LON_RANGE = (-10.0, -8.0)
 
 VALID_STATUS = {"INCOMING_AT", "STOPPED_AT", "IN_TRANSIT_TO"}
-
-_PLAN_PREFIX = re.compile(r"^\[[^\]]*\]")
 
 
 def normalize_timestamp(raw: Any) -> int | None:
@@ -41,10 +38,15 @@ def normalize_timestamp(raw: Any) -> int | None:
 
 
 def normalize_trip_id(raw: Any) -> str | None:
-    """Remove o prefixo ``[plano]`` que versões antigas da API acrescentavam."""
-    if not raw:
+    """Mantém o id **completo**, incluindo os prefixos ``[plano][operador]``.
+
+    Medido em 2026-11-04: 1117/1117 trip_id do tempo real existem tal e qual no GTFS
+    atual (ex.: ``[7DQC0][LA77N]1252_0_3_1700_1729_0_1``). Retirar o prefixo, como
+    fazia o código antigo da API, partiria o *join* com o horário.
+    """
+    if raw is None:
         return None
-    trip = _PLAN_PREFIX.sub("", str(raw)).strip()
+    trip = str(raw).strip()
     return trip or None
 
 
@@ -54,6 +56,15 @@ def _float(raw: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return v if math.isfinite(v) else None
+
+
+# Valores que a fonte usa para "sem paragem" (observado em 2026-11-04).
+STOP_SENTINELS = {"UNAVAILABLE_STOP_ID", "0", "null", "undefined"}
+
+
+def _stop(raw: Any) -> str | None:
+    s = _str(raw)
+    return None if s is None or s in STOP_SENTINELS else s
 
 
 def _str(raw: Any) -> str | None:
@@ -143,7 +154,7 @@ def parse_vehicle(
             trip_id=normalize_trip_id(raw.get("trip_id")),
             line_id=_str(raw.get("line_id")),
             route_id=_str(raw.get("route_id")),
-            stop_id=_str(raw.get("stop_id")),
+            stop_id=_stop(raw.get("stop_id")),
             current_status=status,
             agency_id=_str(raw.get("agency_id")),
             collected_at=collected_at,

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     kafka_bootstrap: str = "localhost:19092"
     topic_positions: str = "vehicle-positions"
     topic_arrivals: str = "stop-arrivals"
+    kafka_group_prefix: str = ""  # isola consumer groups (ex.: testes ao lado da produção)
 
     # Base de dados
     database_url: str = "postgresql://cmlive:cmlive@localhost:5432/cmlive"

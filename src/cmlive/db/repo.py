@@ -73,6 +73,20 @@ async def insert_positions(conn: psycopg.AsyncConnection, batch: list[VehiclePos
         return cur.rowcount
 
 
+def build_legacy_map(rows) -> dict[str, str]:
+    """``legacy_ids`` ("030037" ou "LA77N-030037|...") → stop_id atual. Ignora ambíguos."""
+    seen: dict[str, set[str]] = {}
+    for stop_id, legacy in rows:
+        for item in (legacy or "").split("|"):
+            item = item.strip()
+            if not item:
+                continue
+            bare = item.split("-", 1)[1] if "-" in item else item
+            for key in {item, bare}:
+                seen.setdefault(key, set()).add(stop_id)
+    return {k: next(iter(v)) for k, v in seen.items() if len(v) == 1}
+
+
 @dataclass(frozen=True, slots=True)
 class TripInfo:
     service_id: str
@@ -91,6 +105,7 @@ class ScheduleRepo:
         self._trips: OrderedDict[str, TripInfo | None] = OrderedDict()
         self._dates: dict[str, set[date]] = {}
         self.stops: dict[str, tuple[float, float]] = {}
+        self.legacy: dict[str, str] = {}
         self.feed_version: str | None = None
         self._checked = 0.0
 
@@ -108,13 +123,21 @@ class ScheduleRepo:
             version = row[0] if row else None
             if version == self.feed_version:
                 return
-            await cur.execute("SELECT stop_id, lat, lon FROM gtfs.stops WHERE lat IS NOT NULL")
-            self.stops = {s: (lat, lon) for s, lat, lon in await cur.fetchall()}
+            await cur.execute("SELECT stop_id, lat, lon, legacy_ids FROM gtfs.stops")
+            rows = await cur.fetchall()
+            self.stops = {s: (lat, lon) for s, lat, lon, _ in rows if lat is not None}
+            self.legacy = build_legacy_map((s, leg) for s, _, _, leg in rows)
         await self.conn.commit()
         self._trips.clear()
         self._dates.clear()
         self.feed_version = version
         log.info("GTFS ativo: %s (%d paragens)", version, len(self.stops))
+
+    def canonical_stop(self, stop_id: str | None) -> str | None:
+        """Converte um id antigo (ainda usado pelo tempo real) no id do GTFS atual."""
+        if stop_id is None or stop_id in self.stops:
+            return stop_id
+        return self.legacy.get(stop_id, stop_id)
 
     def stop_coords(self, stop_id: str) -> tuple[float, float] | None:
         return self.stops.get(stop_id)
