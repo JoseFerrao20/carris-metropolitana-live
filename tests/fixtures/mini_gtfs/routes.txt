@@ -1,0 +1,2 @@
+agency_id,line_id,route_id,route_short_name,route_long_name,route_color,route_text_color,route_type
+CM,9999,9999_0,9999,Fixture A - Fixture B,C61D23,FFFFFF,3

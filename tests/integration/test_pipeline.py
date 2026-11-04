@@ -64,26 +64,32 @@ def _pick_trip():
                    FROM gtfs.stop_times st WHERE st.trip_id = t.trip_id)
             ORDER BY cd.date, t.trip_id LIMIT 1""").fetchone()
         stops = c.execute(
-            "SELECT stop_sequence, stop_id, arrival_s FROM gtfs.stop_times "
-            "WHERE trip_id = %s ORDER BY stop_sequence",
+            "SELECT st.stop_sequence, st.stop_id, st.arrival_s, s.lat, s.lon "
+            "FROM gtfs.stop_times st JOIN gtfs.stops s USING (stop_id) "
+            "WHERE st.trip_id = %s ORDER BY st.stop_sequence",
             (trip_id,),
         ).fetchall()
     tz = ZoneInfo("Europe/Lisbon")
-    return trip_id, d, [(seq, sid, scheduled_epoch(d, arr, tz)) for seq, sid, arr in stops]
+    return (
+        trip_id,
+        d,
+        [(seq, sid, scheduled_epoch(d, arr, tz), lat, lon) for seq, sid, arr, lat, lon in stops],
+    )
 
 
 def _trajectory(vid: str, trip_id: str, stops) -> list[VehiclePosition]:
-    """INCOMING_AT 10 s antes e STOPPED_AT 10 s depois ⇒ chegada estimada = sched + DELAY."""
+    """INCOMING_AT 10 s antes (~170 m antes da paragem, fora da geofence) e STOPPED_AT
+    10 s depois, na paragem ⇒ chegada estimada = sched + DELAY."""
     out = []
-    for _, sid, sched in stops:
+    for _, sid, sched, lat, lon in stops:
         t = sched + DELAY
-        for ts, status in ((t - 10, "INCOMING_AT"), (t + 10, "STOPPED_AT")):
+        for ts, status, dlat in ((t - 10, "INCOMING_AT", 0.0015), (t + 10, "STOPPED_AT", 0.0)):
             out.append(
                 VehiclePosition(
                     vehicle_id=vid,
                     ts=int(ts),
-                    lat=38.7,
-                    lon=-9.1,
+                    lat=lat - dlat,
+                    lon=lon,
                     bearing=None,
                     speed=None,
                     trip_id=trip_id,

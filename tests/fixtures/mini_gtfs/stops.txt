@@ -1,0 +1,13 @@
+stop_id,stop_name,stop_lat,stop_lon,municipality_name
+990000,Paragem de teste 1,38.700000,-9.100000,Lisboa
+990001,Paragem de teste 2,38.702000,-9.102000,Lisboa
+990002,Paragem de teste 3,38.704000,-9.104000,Lisboa
+990003,Paragem de teste 4,38.706000,-9.106000,Lisboa
+990004,Paragem de teste 5,38.708000,-9.108000,Lisboa
+990005,Paragem de teste 6,38.710000,-9.110000,Lisboa
+990006,Paragem de teste 7,38.712000,-9.112000,Lisboa
+990007,Paragem de teste 8,38.714000,-9.114000,Lisboa
+990008,Paragem de teste 9,38.716000,-9.116000,Lisboa
+990009,Paragem de teste 10,38.718000,-9.118000,Lisboa
+990010,Paragem de teste 11,38.720000,-9.120000,Lisboa
+990011,Paragem de teste 12,38.722000,-9.122000,Lisboa

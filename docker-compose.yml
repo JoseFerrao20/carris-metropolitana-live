@@ -2,6 +2,7 @@ name: cmlive
 
 x-app: &app
   build: .
+  image: cmlive-app:latest
   restart: unless-stopped
   environment: &env
     CMLIVE_DATABASE_URL: postgresql://cmlive:cmlive@timescaledb:5432/cmlive

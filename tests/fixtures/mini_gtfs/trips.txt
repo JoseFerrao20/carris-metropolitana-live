@@ -1,0 +1,3 @@
+route_id,service_id,trip_id,direction_id,pattern_id,trip_headsign
+9999_0,FIX_1,9999_0_1_0800_0829_0_FIX,0,9999_0_1,Fixture B
+9999_0,FIX_1,9999_0_1_2350_2359_0_FIX,0,9999_0_1,Fixture B

@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      timescaledb:
+        image: timescale/timescaledb:2.17.2-pg16
+        env:
+          POSTGRES_USER: cmlive
+          POSTGRES_PASSWORD: cmlive
+          POSTGRES_DB: cmlive
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cmlive" --health-interval 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.11"
+      - run: uv sync --frozen
+      - run: uv run ruff check . && uv run ruff format --check .
+      - name: Testes unitários
+        run: uv run pytest -q
+      - name: Redpanda
+        run: |
+          docker run -d --name rp -p 19093:19092 redpandadata/redpanda:v24.2.7 \
+            redpanda start --smp 1 --memory 512M --overprovisioned --mode dev-container \
+            --kafka-addr 0.0.0.0:19092 --advertise-kafka-addr localhost:19093
+          for i in $(seq 1 30); do docker exec rp rpk cluster health | grep -q 'Healthy:.*true' && break; sleep 2; done
+      - name: Testes de integração (TimescaleDB + Redpanda reais, mini-GTFS de fixture)
+        env:
+          CMLIVE_KAFKA_BOOTSTRAP: localhost:19093
+        run: uv run pytest -m integration -v
