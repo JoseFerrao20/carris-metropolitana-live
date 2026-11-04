@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+data/
+*.ndjson
+*.parquet
+*.duckdb
+.env
