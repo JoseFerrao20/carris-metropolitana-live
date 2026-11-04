@@ -29,7 +29,7 @@ Cada fase termina com um commit (ou vários), com testes a passar.
 - [x] Deteção de chegada à paragem: transição de `stop_id` / `STOPPED_AT`, com *geofence* (≤ 40 m) como reforço
 - [x] `delay_s = observed_arrival − scheduled_arrival`, resolvendo horas GTFS > 24:00 e o dia de serviço
 - [x] Eventos fora de ordem: *watermark* por veículo com tolerância configurável; eventos tardios são descartados e contados (`cm_late_events_total`)
-- [ ] Validação contra `/v2/arrivals/by_stop/:id` (observed_arrival oficial)
+- [x] Validação contra `/v2/arrivals/by_stop/:id` (`cmlive validate`), por correr com a API ao vivo
 
 ## Fase 5 — Agregações incrementais
 - [x] *Continuous aggregates* do TimescaleDB: atraso por linha × hora, com atualização incremental

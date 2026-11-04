@@ -149,12 +149,13 @@ Outras ferramentas:
 CMLIVE_RECORD_DIR=/data/recordings docker compose up -d collector  # grava as respostas em bruto
 uv run python -m cmlive replay data/recordings --speed 20           # volta a injetá-las no log
 uv run --extra analytics python -m cmlive export --days 7           # Parquet para DuckDB
+uv run python -m cmlive validate --stops 50                         # erro vs. observed_arrival oficial
 ```
 
 ## Testes
 
 ```bash
-make test        # 61 testes unitários e de propriedades (sem dependências externas)
+make test        # 65 testes unitários e de propriedades (sem dependências externas)
 make up-infra    # TimescaleDB + Redpanda
 make test-all    # + teste ponta a ponta contra a infraestrutura real
 ```

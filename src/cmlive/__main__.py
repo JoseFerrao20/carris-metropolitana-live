@@ -130,6 +130,36 @@ def export(args) -> None:
         print(path, con.execute(f"SELECT count(*) FROM '{path}'").fetchone()[0], "linhas")
 
 
+async def validate(args) -> None:
+    """Compara as nossas chegadas de hoje com o observed_arrival oficial (/v2/arrivals/by_stop)."""
+    import httpx
+    import psycopg
+
+    from .validate import compare, fetch_official, summarize
+
+    s = get_settings()
+    async with await psycopg.AsyncConnection.connect(s.database_url) as conn:
+        cur = await conn.execute(
+            """SELECT stop_id FROM stop_arrivals WHERE service_date = current_date
+               GROUP BY stop_id ORDER BY count(*) DESC LIMIT %s""",
+            (args.stops,),
+        )
+        stops = [r[0] for r in await cur.fetchall()]
+        rows = []
+        async with httpx.AsyncClient(timeout=s.http_timeout_s) as client:
+            for stop_id in stops:
+                cur = await conn.execute(
+                    """SELECT trip_id, extract(epoch FROM observed_at)::float8 FROM stop_arrivals
+                       WHERE stop_id = %s AND service_date = current_date""",
+                    (stop_id,),
+                )
+                ours = dict(await cur.fetchall())
+                rows += compare(
+                    ours, await fetch_official(client, s.api_base_url, stop_id), stop_id
+                )
+    print(orjson.dumps(summarize(rows), option=orjson.OPT_INDENT_2).decode())
+
+
 def web(args) -> None:
     import uvicorn
 
@@ -155,6 +185,8 @@ def main() -> None:
     sp = sub.add_parser("export")
     sp.add_argument("--days", type=int, default=7)
     sp.add_argument("--out", default="data/export")
+    sp = sub.add_parser("validate")
+    sp.add_argument("--stops", type=int, default=50)
     sp = sub.add_parser("web")
     sp.add_argument("--host", default="0.0.0.0")
     sp.add_argument("--port", type=int, default=8000)
@@ -172,6 +204,7 @@ def main() -> None:
             "ingestor": ingestor,
             "delay-engine": delay_engine,
             "replay": replay,
+            "validate": validate,
         }[args.cmd]
         asyncio.run(fn(args))
 
