@@ -14,6 +14,7 @@ from typing import Any
 import orjson
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 from psycopg_pool import AsyncConnectionPool
 
@@ -160,6 +161,11 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
 
     app = FastAPI(title="Carris Metropolitana Live", lifespan=lifespan)
     app.state.live = state
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(resources.files("cmlive.web").joinpath("static"))),
+        name="static",
+    )
 
     def _page(name: str) -> HTMLResponse:
         html = resources.files("cmlive.web").joinpath("static", name).read_text()
@@ -264,15 +270,20 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
     @app.get("/api/analytics/stops")
     async def by_stop(line_id: str, days: int = Query(7, ge=1, le=60)):
         rows = await _query(
-            """SELECT a.stop_id, s.name, min(a.stop_sequence) AS stop_sequence,
+            """SELECT t.pattern_id, t.direction_id, t.headsign,
+                      a.stop_id, s.name, min(a.stop_sequence) AS stop_sequence,
                       count(*)::int AS n,
                       round(avg(a.delay_s)::numeric, 1)::float AS avg_delay_s,
                       percentile_cont(0.5) WITHIN GROUP (ORDER BY a.delay_s) AS p50_delay_s,
                       percentile_cont(0.9) WITHIN GROUP (ORDER BY a.delay_s) AS p90_delay_s
-               FROM stop_arrivals a LEFT JOIN gtfs.stops s USING (stop_id)
+               FROM stop_arrivals a
+               LEFT JOIN gtfs.stops s USING (stop_id)
+               LEFT JOIN gtfs.trips t USING (trip_id)
                WHERE a.line_id = %s AND a.scheduled_at > now() - make_interval(days => %s)
                  AND a.uncertainty_s <= 60
-               GROUP BY a.stop_id, s.name ORDER BY stop_sequence""",
+               -- por percurso: misturar sentidos intercala paragens de viagens diferentes
+               GROUP BY t.pattern_id, t.direction_id, t.headsign, a.stop_id, s.name
+               ORDER BY t.pattern_id, stop_sequence""",
             (line_id, days),
         )
         return _json(rows)

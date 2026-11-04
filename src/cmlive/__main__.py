@@ -139,25 +139,37 @@ async def validate(args) -> None:
 
     s = get_settings()
     async with await psycopg.AsyncConnection.connect(s.database_url) as conn:
+        # O endpoint oficial usa os ids ANTIGOS das paragens (legacy_ids do GTFS).
         cur = await conn.execute(
-            """SELECT stop_id FROM stop_arrivals WHERE service_date = current_date
-               GROUP BY stop_id ORDER BY count(*) DESC LIMIT %s""",
+            """SELECT a.stop_id, coalesce(split_part(s.legacy_ids, '|', 1), a.stop_id)
+               FROM stop_arrivals a LEFT JOIN gtfs.stops s USING (stop_id)
+               WHERE a.service_date = current_date
+               GROUP BY 1, 2 ORDER BY count(*) DESC LIMIT %s""",
             (args.stops,),
         )
-        stops = [r[0] for r in await cur.fetchall()]
-        rows = []
+        stops = await cur.fetchall()
+        rows, official_total = [], 0
         async with httpx.AsyncClient(timeout=s.http_timeout_s) as client:
-            for stop_id in stops:
+            for stop_id, api_stop_id in stops:
                 cur = await conn.execute(
                     """SELECT trip_id, extract(epoch FROM observed_at)::float8 FROM stop_arrivals
                        WHERE stop_id = %s AND service_date = current_date""",
                     (stop_id,),
                 )
                 ours = dict(await cur.fetchall())
-                rows += compare(
-                    ours, await fetch_official(client, s.api_base_url, stop_id), stop_id
-                )
-    print(orjson.dumps(summarize(rows), option=orjson.OPT_INDENT_2).decode())
+                try:
+                    official = await fetch_official(client, s.api_base_url, api_stop_id)
+                except httpx.HTTPError as e:
+                    logging.warning("paragem %s: %s", api_stop_id, e)
+                    continue
+                official_total += len(official)
+                rows += compare(ours, official, stop_id)
+    out = summarize(rows)
+    out["stops_checked"] = len(stops)
+    out["official_observed_arrivals"] = official_total
+    if official_total == 0:
+        out["note"] = "a API não publicou nenhum observed_arrival para estas paragens"
+    print(orjson.dumps(out, option=orjson.OPT_INDENT_2).decode())
 
 
 def web(args) -> None:

@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Carris Metropolitana Live</title>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<!-- MapLibre GL 4.7.1 servido localmente (BSD-3, ver vendor/MAPLIBRE-LICENSE.txt) -->
+<link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
+<script src="/static/vendor/maplibre-gl.js"></script>
 <style>
   :root { --bg:#ffffff; --fg:#1d1d1f; --muted:#6b6b70; --card:rgba(255,255,255,.94); --border:#e3e3e8;
           --ok:#1a9e5c; --warn:#e8a317; --bad:#d6342c; --early:#3478d6; --none:#8e8e93; }
@@ -71,18 +72,20 @@ const vehicles = new Map();
 const ANIM_MS = 2000;
 let filter = '';
 let updates = [];
-const samples = { vehicle_to_browser: [], collector_to_browser: [], log_to_browser: [] };
+const samples = { vehicle_to_browser: [], collector_to_browser: [], log_to_browser: [] }; // a enviar
+const recent = { vehicle_to_browser: [], collector_to_browser: [] };                       // painel
+const keep = (k, v) => { samples[k].push(v); if (recent[k]) { recent[k].push(v); if (recent[k].length > 500) recent[k].shift(); } };
 
-function upsert(v, now) {
+function upsert(v, now, measure = true) {  // o snapshot inicial não conta como latência
   const cur = vehicles.get(v.vehicle_id);
   if (cur && cur.data.ts >= v.ts && v.delay_s === cur.data.delay_s) return;
   const from = cur ? currentPos(cur, now) : [v.lon, v.lat];
   vehicles.set(v.vehicle_id, { data: v, from, to: [v.lon, v.lat], t0: now });
   const t = Date.now() / 1000;
-  if (!cur || cur.data.ts < v.ts) {
-    samples.vehicle_to_browser.push(t - v.ts);
-    samples.collector_to_browser.push(t - v.collected_at);
-    if (v.log_ts) samples.log_to_browser.push(t - v.log_ts);
+  if (measure && (!cur || cur.data.ts < v.ts)) {
+    keep('vehicle_to_browser', t - v.ts);
+    keep('collector_to_browser', t - v.collected_at);
+    if (v.log_ts) keep('log_to_browser', t - v.log_ts);
     updates.push(t);
   }
 }
@@ -112,9 +115,6 @@ map.on('load', () => {
       ['<', ['get', 'delay'], -60], css('--early'),
       ['<=', ['get', 'delay'], 300], css('--ok'),
       ['<=', ['get', 'delay'], 600], css('--warn'), css('--bad')] } });
-  map.addLayer({ id: 'lbl', type: 'symbol', source: 'v', minzoom: 13, layout: {
-    'text-field': ['get', 'line'], 'text-size': 11, 'text-offset': [0, 1.1] },
-    paint: { 'text-halo-color': '#fff', 'text-halo-width': 1.2 } });
   map.on('click', 'v', e => {
     const p = e.features[0].properties, d = vehicles.get(p.id).data;
     const delay = d.delay_s == null ? 'sem dados' : `${(d.delay_s / 60).toFixed(1)} min`;
@@ -132,7 +132,7 @@ function connect() {
   const status = document.getElementById('status');
   es.addEventListener('snapshot', e => {
     const msg = JSON.parse(e.data), now = performance.now();
-    msg.vehicles.forEach(v => upsert(v, now));
+    msg.vehicles.forEach(v => upsert(v, now, false));
     status.textContent = 'ligado · SSE';
   });
   es.addEventListener('delta', e => {
@@ -151,8 +151,8 @@ setInterval(() => {
   updates = updates.filter(x => t - x < 60);
   document.getElementById('n').textContent = vehicles.size;
   document.getElementById('rate').textContent = updates.length;
-  document.getElementById('lat-v').textContent = fmt(median(samples.vehicle_to_browser.slice(-500)));
-  document.getElementById('lat-c').textContent = fmt(median(samples.collector_to_browser.slice(-500)));
+  document.getElementById('lat-v').textContent = fmt(median(recent.vehicle_to_browser));
+  document.getElementById('lat-c').textContent = fmt(median(recent.collector_to_browser));
 }, 1000);
 setInterval(() => {
   const body = JSON.stringify(samples);

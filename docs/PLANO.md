@@ -29,7 +29,7 @@ Cada fase termina com um commit (ou vários), com testes a passar.
 - [x] Deteção de chegada à paragem: transição de `stop_id` / `STOPPED_AT`, com *geofence* (≤ 40 m) como reforço
 - [x] `delay_s = observed_arrival − scheduled_arrival`, resolvendo horas GTFS > 24:00 e o dia de serviço
 - [x] Eventos fora de ordem: *watermark* por veículo com tolerância configurável; eventos tardios são descartados e contados (`cm_late_events_total`)
-- [x] Validação contra `/v2/arrivals/by_stop/:id` (`cmlive validate`), por correr com a API ao vivo
+- [x] Validação contra `/v2/arrivals/by_stop/:id` (`cmlive validate`): corrida; a API não publica `observed_arrival` neste momento
 
 ## Fase 5 — Agregações incrementais
 - [x] *Continuous aggregates* do TimescaleDB: atraso por linha × hora, com atualização incremental
@@ -43,6 +43,10 @@ Cada fase termina com um commit (ou vários), com testes a passar.
 
 ## Fase 7 — Observabilidade, testes e README final
 - [x] Latência ponta a ponta instrumentada (`ts_veículo → ts_coletor → ts_kafka → ts_bd → ts_browser`)
-- [ ] Medir volume e latência com a API ao vivo
+- [x] Medir volume e latência com a API ao vivo (40 min de ponta, 2026-11-04)
 - [x] Testes: unitários, propriedades (duplicados/ordem) e integração com `docker compose`
-- [ ] README com capturas de ecrã e números medidos
+- [x] README com capturas de ecrã e números medidos
+
+## Próximos passos
+- [ ] Recolha de vários dias completos (o *heatmap* e o ranking precisam de mais do que 40 min)
+- [ ] Repetir `cmlive validate` quando a API voltar a publicar `observed_arrival`

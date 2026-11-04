@@ -47,9 +47,10 @@
   </div>
 
   <div class="card">
-    <h2>Linhas (últimos 7 dias, ordenadas pelo atraso médio)</h2>
+    <h2>Linhas com mais atraso (últimos 7 dias, mín. 20 chegadas)</h2>
     <table><thead><tr><th>Linha</th><th>Chegadas</th><th>Atraso médio</th><th>% pontual</th><th>% atrasado</th><th>% adiantado</th></tr></thead>
     <tbody id="lines"></tbody></table>
+    <button id="more" hidden style="margin-top:10px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:inherit;cursor:pointer"></button>
   </div>
 </main>
 <script>
@@ -96,11 +97,19 @@ async function heat(line) {
   document.getElementById('heat').innerHTML = rows.length ? h : '<p class="empty">Ainda sem dados.</p>';
 }
 
-async function stops(line) {
-  const rows = await j(`/api/analytics/stops?line_id=${encodeURIComponent(line)}`);
-  document.getElementById('stops-title').textContent = `Atraso médio por paragem: linha ${line}`;
+async function stops(line, pattern) {
+  const all = await j(`/api/analytics/stops?line_id=${encodeURIComponent(line)}`);
   const el = document.getElementById('stops');
-  if (!rows.length) { el.innerHTML = '<p class="empty">Sem chegadas medidas.</p>'; return; }
+  const byPat = new Map();
+  all.forEach(r => { if (!byPat.has(r.pattern_id)) byPat.set(r.pattern_id, []); byPat.get(r.pattern_id).push(r); });
+  const pats = [...byPat.entries()].sort((a, b) => b[1].reduce((s, r) => s + r.n, 0) - a[1].reduce((s, r) => s + r.n, 0));
+  if (!pats.length) { el.innerHTML = '<p class="empty">Sem chegadas medidas.</p>'; return; }
+  const cur = pattern && byPat.has(pattern) ? pattern : pats[0][0];
+  const rows = byPat.get(cur);
+  document.getElementById('stops-title').innerHTML = `Atraso médio por paragem: linha ${esc(line)} ` +
+    `<select id="pat-sel">${pats.map(([p, rs]) => `<option value="${esc(p)}"${p === cur ? ' selected' : ''}>` +
+      `sentido ${rs[0].direction_id ?? '?'} → ${esc(rs[0].headsign ?? p)}</option>`).join('')}</select>`;
+  document.getElementById('pat-sel').onchange = e => stops(line, e.target.value);
   const W = Math.max(600, rows.length * 18), H = 220, pad = 30;
   const maxv = Math.max(60, ...rows.map(r => r.avg_delay_s)), minv = Math.min(0, ...rows.map(r => r.avg_delay_s));
   const y = v => pad + (H - 2*pad) * (maxv - v) / (maxv - minv), bw = (W - 2*pad) / rows.length;
@@ -118,9 +127,16 @@ async function stops(line) {
 async function lines() {
   const rows = await j('/api/analytics/lines');
   const tb = document.getElementById('lines'), sel = document.getElementById('line-sel');
-  tb.innerHTML = rows.length ? rows.map(r => `<tr data-line="${esc(r.line_id)}"><td>${esc(r.line_id)}</td><td>${r.n}</td>` +
-    `<td>${min(r.avg_delay_s)}</td><td>${r.pct_on_time}%</td><td>${r.pct_late}%</td><td>${r.pct_early}%</td></tr>`).join('')
-    : '<tr><td colspan="6" class="empty">Ainda sem dados.</td></tr>';
+  const TOP = 25;
+  const row = (r, i) => `<tr data-line="${esc(r.line_id)}"${i >= TOP ? ' class="more" hidden' : ''}><td>${esc(r.line_id)}</td><td>${r.n}</td>` +
+    `<td>${min(r.avg_delay_s)}</td><td>${r.pct_on_time}%</td><td>${r.pct_late}%</td><td>${r.pct_early}%</td></tr>`;
+  tb.innerHTML = rows.length ? rows.map(row).join('') : '<tr><td colspan="6" class="empty">Ainda sem dados.</td></tr>';
+  const btn = document.getElementById('more');
+  if (rows.length > TOP) {
+    btn.hidden = false;
+    btn.textContent = `Mostrar as ${rows.length} linhas`;
+    btn.onclick = () => { tb.querySelectorAll('tr.more').forEach(t => t.hidden = false); btn.hidden = true; };
+  }
   rows.map(r => r.line_id).sort().forEach(l => sel.insertAdjacentHTML('beforeend', `<option>${esc(l)}</option>`));
   tb.querySelectorAll('tr[data-line]').forEach(tr => tr.onclick = () => stops(tr.dataset.line));
   if (rows.length) stops(rows[0].line_id);

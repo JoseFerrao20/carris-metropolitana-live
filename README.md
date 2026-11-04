@@ -12,10 +12,10 @@ O que o sistema faz:
 4. **Mostra** um mapa ao vivo (SSE) com os veículos em movimento, coloridos pelo atraso.
 5. **Agrega**, de forma incremental, os atrasos por linha, hora do dia e dia da semana.
 
-> **Estado:** pipeline completa e testada ponta a ponta contra TimescaleDB e Redpanda
-> reais. Faltam as medições de volume e latência e as capturas de ecrã com dados ao vivo
-> (ver [Volume de dados e latência](#volume-de-dados-e-latência)). Plano em
-> [`docs/PLANO.md`](docs/PLANO.md); investigação da API em [`docs/API.md`](docs/API.md).
+> **Estado:** pipeline completa, testada ponta a ponta e corrida contra a **API real**
+> (ver [números medidos](#volume-de-dados-e-latência)). As diferenças entre a documentação
+> da API e a realidade, e como foram tratadas, estão em [`docs/API.md`](docs/API.md).
+> Plano em [`docs/PLANO.md`](docs/PLANO.md).
 
 ---
 
@@ -88,38 +88,68 @@ publica o `observed_arrival` da própria Carris.
 
 ## Volume de dados e latência
 
-### Medido
+Medido contra a **API real** a 2026-11-04, entre as 17:15 e as 17:55 de Lisboa
+(hora de ponta da tarde), com o GTFS em vigor nesse dia (`feed_version 20261104-0400-05`).
+São 40 minutos de dados: os volumes são de ponta, não médias diárias.
 
-| O quê | Valor | Como |
-|---|---|---|
-| Feed GTFS (plano de jun/2024, histórico do repositório oficial) | 250 090 viagens · 7 905 351 `stop_times` · 12 527 paragens · 1 046 rotas | `python -m cmlive gtfs --zip …` |
-| Carregamento do GTFS completo (zip → COPY → índices → troca atómica) | **56,5 s**; 978 MB em `gtfs.stop_times` | VM de desenvolvimento na cloud |
-| Recarregar o mesmo feed | 0,5 s (sha256 igual ⇒ não faz nada) | |
+### Volume
 
-### Por medir com a API ao vivo
-
-Estes números dependem da API real e só são publicados quando forem medidos
-(`make bench` → `/api/stats`, e o histograma `cm_e2e_latency_seconds` em `/metrics`).
-Não vou pôr estimativas no lugar de medições.
-
-| Métrica | Valor |
+| Métrica | Valor medido |
 |---|---|
-| Veículos ativos (pico / vazio) | — |
-| Eventos novos / s (após dedup) | — |
-| Linhas em `vehicle_positions` / dia e espaço comprimido | — |
-| Latência p50 / p95 por etapa: veículo → coletor → log → BD → browser | — |
+| Veículos por resposta de `/v2/vehicles` | ~1 120–1 140 (pico de 1 398 distintos em 33 min) |
+| Polls bem-sucedidos | 397/397 (intervalo de 5 s, sem falhas) |
+| Registos repetidos descartados pelo coletor | **70%** (331 977 repetidos vs. 143 651 novos) |
+| Eventos novos após dedup | **68,6 /s** na ponta (≈ 5,9 M/dia, se fosse sempre ponta) |
+| Intervalo entre posições do mesmo veículo | p50 15 s · p90 29 s |
+| Posições rejeitadas | coordenadas `(0, 0)` vindas de 8 veículos |
+| Espaço em `vehicle_positions` | 46 MB por 144 k linhas → **7,9 MB comprimido** (5,9×, ~56 B/posição) |
+| Chegadas medidas | 24 520 em ~35 min; **97,4%** com horário GTFS correspondente |
+| GTFS em vigor | 306 978 viagens · 9 955 081 `stop_times` · 12 797 paragens; carregado em **69–80 s** (com download) |
 
-A latência é decomposta por etapa porque cada uma tem um dono diferente:
+### Latência ponta a ponta
+
+Medida no browser (7 000 amostras, só *deltas* SSE, sem contar o snapshot inicial) e na BD:
+
+| Etapa | p50 | p95 | Onde |
+|---|---|---|---|
+| veículo → coletor (idade ao chegar à API) | 24,5 s | 34,9 s | fonte: hub GO + cache de 5 s da API |
+| coletor → BD (Redpanda + ingestor) | 90 ms | 149 ms | esta pipeline |
+| log (Redpanda) → browser | 0,54 s | 1,30 s | esta pipeline (inclui o *tick* SSE de 1 s) |
+| coletor → browser | **0,62 s** | **1,30 s** | esta pipeline |
+| **veículo → browser** | **25,5 s** | **41,9 s** | total |
 
 ```
-ts (veículo)  →  collected_at (coletor)  →  log_ts (Redpanda)  →  ingested_at (BD)  →  browser
- └─ fonte: hub GO + cache de 5 s da API ─┘└──────────── esta pipeline ─────────────┘
+ts (veículo) ──24,5 s──▶ collected_at ──~0,1 s──▶ Redpanda ──~0,5 s──▶ browser
+ └──────── fonte (fora do nosso controlo) ───┘└──────────── esta pipeline: p50 0,62 s ──────────┘
 ```
+
+Quase toda a latência está **a montante** da API: a pipeline acrescenta menos de 1,3 s
+no p95. O *tick* SSE de 1 s é a maior parte do que é nosso, e é uma escolha
+deliberada (agrupa ~70 atualizações/s numa mensagem por segundo).
+
+### O que os primeiros dados mostram (e os seus limites)
+
+- A linha **1717**, sentido Colégio Militar, circulava 20 a 37 min atrasada e o atraso
+  crescia ao longo do percurso, enquanto o sentido oposto ia quase a horas (captura abaixo).
+- Com só 40 min de dados, o *heatmap* por hora planeada é enviesado pela janela: na
+  hora planeada anterior só aparecem as viagens muito atrasadas, e na seguinte só as
+  adiantadas. O efeito desaparece com dias completos de recolha.
+- **Validação oficial:** `cmlive validate` consultou `/v2/arrivals/by_stop` para as 50
+  paragens com mais chegadas. A API não publicou **nenhum** `observed_arrival` (0 em
+  2 205 registos; só estimativas para chegadas futuras), por isso a comparação com a
+  verdade oficial fica pendente de a CM voltar a publicar esse campo.
 
 ## Capturas de ecrã
 
-*(a adicionar com dados reais: `uv run --with playwright python scripts/screenshots.py`
-gera `docs/img/map.png` e `docs/img/analytics.png`)*
+Dados reais, 2026-11-04, ~17:50 (Lisboa).
+
+**Mapa ao vivo:** 1 296 veículos, coloridos pelo último atraso medido (cinzento = sem chegada medida ainda).
+
+![Mapa ao vivo](docs/img/map.png)
+
+**Análise:** KPIs, *heatmap*, atraso por paragem (linha 1717, sentido 1) e ranking de linhas.
+
+![Análise de atrasos](docs/img/analytics.png)
 
 ---
 
@@ -155,7 +185,7 @@ uv run python -m cmlive validate --stops 50                         # erro vs. o
 ## Testes
 
 ```bash
-make test        # 65 testes unitários e de propriedades (sem dependências externas)
+make test        # 70 testes unitários e de propriedades (sem dependências externas)
 make up-infra    # TimescaleDB + Redpanda
 make test-all    # + teste ponta a ponta contra a infraestrutura real
 ```
@@ -168,7 +198,8 @@ O que é testado:
 - **Tempo GTFS**: horas > 24:00, dia de serviço anterior, linhas circulares e dias de mudança de hora. Este teste apanhou um bug real: somar `timedelta` a um `datetime` com fuso dava um erro de 1 h nesses dias.
 - **Ponta a ponta** (CI com TimescaleDB e Redpanda reais): uma viagem real do GTFS com trajetória sintética (+120 s, 30% duplicados, fora de ordem) dá exatamente uma chegada por paragem com atraso de 120 s; reprocessar o mesmo stream não cria linhas; o *continuous aggregate* e a API refletem os dados.
 
-O sistema também foi corrido com `docker compose` num ambiente **sem acesso** à API. O
+Antes de o domínio da API estar autorizado, o sistema também foi corrido com
+`docker compose` num ambiente **sem acesso** à API. O
 coletor fez os retries, abriu o *circuit breaker* ao fim de 5 falhas e expôs
 `cm_source_up 0`, enquanto o resto da stack continuou de pé.
 
