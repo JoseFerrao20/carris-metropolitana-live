@@ -1,0 +1,12 @@
+[
+  {
+    "agency_id": "41", "bearing": 0, "block_id": "1_1405-1", "current_status": "INCOMING_AT",
+    "event_id": "21NBI-41|1160-1503_0_2_1700_1729_0_2", "id": "41|1160", "lat": 38.73644,
+    "line_id": "1503", "lon": -9.21281, "pattern_id": "1503_0_2", "route_id": "1503_0",
+    "schedule_relationship": "SCHEDULED", "shift_id": "1405", "speed": 0, "stop_id": "030558",
+    "timestamp": 1729621800, "trip_id": "1503_0_2_1700_1729_0_2_21NBI", "door_status": "CLOSED",
+    "bikes_allowed": false, "capacity_seated": 26, "capacity_standing": 82, "capacity_total": 108,
+    "license_plate": "AR-90-AG", "make": "Mercedes-Benz", "model": "CONECTO", "owner": "ALVORADA",
+    "propulsion": "diesel", "registration_date": "20230101", "wheelchair_accessible": false
+  }
+]
