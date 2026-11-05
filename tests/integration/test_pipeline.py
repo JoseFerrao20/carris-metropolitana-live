@@ -219,7 +219,9 @@ async def test_end_to_end_delay_dedup_reorder_idempotent():
         assert r.status_code == 200
         heat = client.get("/api/analytics/heatmap", params={"line_id": "TEST", "days": 3650})
         assert heat.status_code == 200
-        assert sum(c["n"] for c in heat.json()) >= len(stops)
+        # Uma viagem isolada não tem recolha contínua de H−30 a H+90 min:
+        # o heatmap exclui-a (proteção contra o enviesamento de janela).
+        assert sum(c["n"] for c in heat.json()) == 0
         assert client.get("/api/stats").status_code == 200
 
     _cleanup(trip_id)

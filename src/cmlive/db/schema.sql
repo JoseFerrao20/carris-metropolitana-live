@@ -88,6 +88,30 @@ SELECT add_continuous_aggregate_policy('delay_hourly',
     schedule_interval => INTERVAL '5 minutes',
     if_not_exists     => TRUE);
 
+-- ------------------------------------------------------------------ cobertura da recolha
+-- Minutos em que houve recolha. Uma hora planeada H só entra nas análises por hora se a
+-- recolha cobriu H − 30 min .. H + 90 min (> 99,5% das chegadas caem nessa janela):
+-- caso contrário, nas pontas da janela só aparecem as viagens mais atrasadas/adiantadas.
+CREATE MATERIALIZED VIEW IF NOT EXISTS collection_minutes
+WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+SELECT time_bucket(INTERVAL '1 minute', ts) AS minute, count(*) AS n
+FROM vehicle_positions
+GROUP BY 1
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy('collection_minutes',
+    start_offset      => INTERVAL '3 days',
+    end_offset        => INTERVAL '1 minute',
+    schedule_interval => INTERVAL '5 minutes',
+    if_not_exists     => TRUE);
+
+CREATE OR REPLACE VIEW covered_hours AS
+SELECT h.bucket
+FROM (SELECT DISTINCT bucket FROM delay_hourly) h
+WHERE (SELECT count(*) FROM collection_minutes c
+       WHERE c.minute >= h.bucket - INTERVAL '30 minutes'
+         AND c.minute <  h.bucket + INTERVAL '90 minutes') >= 115;
+
 -- ------------------------------------------------------------------ GTFS ativo
 CREATE SCHEMA IF NOT EXISTS gtfs;
 CREATE TABLE IF NOT EXISTS gtfs.feed_info (

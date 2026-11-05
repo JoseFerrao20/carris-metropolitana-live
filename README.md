@@ -88,66 +88,110 @@ publica o `observed_arrival` da própria Carris.
 
 ## Volume de dados e latência
 
-Medido contra a **API real** a 2026-11-04, entre as 17:15 e as 17:55 de Lisboa
-(hora de ponta da tarde), com o GTFS em vigor nesse dia (`feed_version 20261104-0400-05`).
-São 40 minutos de dados: os volumes são de ponta, não médias diárias.
+Medido contra a **API real** em duas janelas de recolha, com o GTFS em vigor
+(`feed_version 20261104-0400-05`):
+
+| Janela | Período (Lisboa) | Duração |
+|---|---|---|
+| 1 | qua 04/11, 17:16–17:56 (ponta da tarde) | 0,7 h |
+| 2 | qui 05/11, 09:21–12:50 (fim da ponta da manhã → vazio) | 3,5 h |
+
+As tabelas de atrasos abaixo são geradas por `python -m cmlive report` a partir da BD.
 
 ### Volume
 
 | Métrica | Valor medido |
 |---|---|
-| Veículos por resposta de `/v2/vehicles` | ~1 120–1 140 (pico de 1 398 distintos em 33 min) |
-| Polls bem-sucedidos | 397/397 (intervalo de 5 s, sem falhas) |
-| Registos repetidos descartados pelo coletor | **70%** (331 977 repetidos vs. 143 651 novos) |
-| Eventos novos após dedup | **68,6 /s** na ponta (≈ 5,9 M/dia, se fosse sempre ponta) |
-| Intervalo entre posições do mesmo veículo | p50 15 s · p90 29 s |
-| Posições rejeitadas | coordenadas `(0, 0)` vindas de 8 veículos |
-| Espaço em `vehicle_positions` | 46 MB por 144 k linhas → **7,9 MB comprimido** (5,9×, ~56 B/posição) |
-| Chegadas medidas | 24 520 em ~35 min; **97,4%** com horário GTFS correspondente |
-| GTFS em vigor | 306 978 viagens · 9 955 081 `stop_times` · 12 797 paragens; carregado em **69–80 s** (com download) |
+| Veículos distintos | 1 563 no total; 1 059–1 414 por hora |
+| Eventos novos após dedup | 69,6 /s (qua 17 h) · 65,3 /s (qui 9 h) · 45,7–53,2 /s (qui 10–12 h) |
+| Registos repetidos descartados pelo coletor | **67%** (1,39 M repetidos vs. 675 k novos, só na janela 2) |
+| Polls na janela 2 | 2 500/2 500 bem-sucedidos (intervalo de 5 s), 0 reinícios em 3,5 h |
+| Intervalo entre posições do mesmo veículo | p50 15 s · p90 23 s (janela 2) |
+| Posições rejeitadas | 4 980 com coordenadas `(0, 0)` (0,7%) |
+| Espaço em `vehicle_positions` | 3,5 h = 675 k posições: 233 MB → **22 MB comprimido** (10,6×, ~35 B/posição) |
+| Totais | 846 k posições · 163 k chegadas · 6 891 viagens · 593 linhas |
+| Chegadas com horário GTFS correspondente | **99,9%** das chegadas detetadas (100 sem correspondência em 134 k na janela 2) |
+| GTFS em vigor | 306 978 viagens · 9 955 081 `stop_times` · 12 797 paragens; carregado em 69–80 s (com download) |
 
 ### Latência ponta a ponta
 
-Medida no browser (7 000 amostras, só *deltas* SSE, sem contar o snapshot inicial) e na BD:
+Medida na BD (675 k posições da janela 2) e no browser (8 010 amostras de *deltas* SSE, sem contar o snapshot inicial):
 
 | Etapa | p50 | p95 | Onde |
 |---|---|---|---|
-| veículo → coletor (idade ao chegar à API) | 24,5 s | 34,9 s | fonte: hub GO + cache de 5 s da API |
-| coletor → BD (Redpanda + ingestor) | 90 ms | 149 ms | esta pipeline |
-| log (Redpanda) → browser | 0,54 s | 1,30 s | esta pipeline (inclui o *tick* SSE de 1 s) |
-| coletor → browser | **0,62 s** | **1,30 s** | esta pipeline |
-| **veículo → browser** | **25,5 s** | **41,9 s** | total |
+| veículo → coletor (idade ao chegar à API) | 20,6 s | 29,9 s | fonte: hub GO + cache de 5 s da API |
+| coletor → BD (Redpanda + ingestor) | 71 ms | 129 ms | esta pipeline (p99 170 ms) |
+| log (Redpanda) → browser | 0,75 s | 1,68 s | esta pipeline (inclui o *tick* SSE de 1 s) |
+| coletor → browser | **0,77 s** | **1,75 s** | esta pipeline |
+| **veículo → browser** | **20,8 s** | **29,5 s** | total |
+| chegada observada → `stop_arrivals` | 46 s | 54 s | idade na fonte + janela de reordenação (20 s) + ponto médio entre observações |
 
 ```
-ts (veículo) ──24,5 s──▶ collected_at ──~0,1 s──▶ Redpanda ──~0,5 s──▶ browser
- └──────── fonte (fora do nosso controlo) ───┘└──────────── esta pipeline: p50 0,62 s ──────────┘
+ts (veículo) ──20,6 s──▶ collected_at ──~0,07 s──▶ BD
+                                     └──~0,75 s──▶ browser
+ └──── fonte (fora do nosso controlo) ────┘└──── esta pipeline: p95 < 1,8 s ────┘
 ```
 
-Quase toda a latência está **a montante** da API: a pipeline acrescenta menos de 1,3 s
-no p95. O *tick* SSE de 1 s é a maior parte do que é nosso, e é uma escolha
-deliberada (agrupa ~70 atualizações/s numa mensagem por segundo).
+Quase toda a latência está **a montante** da API. Do que é nosso, a maior parte é o
+*tick* SSE de 1 s, uma escolha deliberada: agrupa ~50–70 atualizações/s numa mensagem
+por segundo.
 
-### O que os primeiros dados mostram (e os seus limites)
+### Atrasos
 
-- A linha **1717**, sentido Colégio Militar, circulava 20 a 37 min atrasada e o atraso
-  crescia ao longo do percurso, enquanto o sentido oposto ia quase a horas (captura abaixo).
-- Com só 40 min de dados, o *heatmap* por hora planeada é enviesado pela janela: na
-  hora planeada anterior só aparecem as viagens muito atrasadas, e na seguinte só as
-  adiantadas. O efeito desaparece com dias completos de recolha.
+**Só horas planeadas com cobertura completa.** Uma hora planeada H só entra se a recolha
+esteve ativa, sem falhas, de H − 30 min a H + 90 min. Nos dados recolhidos, p1 = −11 min e
+p99 = +24 min, e só 0,5% das chegadas ficam a mais de 30 min do horário, por isso essa
+janela apanha mais de 99,5% das chegadas. Sem este filtro, as pontas da recolha só
+apanham as viagens mais atrasadas (ou adiantadas). Com 3,5 h contínuas, há **duas
+horas** com cobertura completa:
+
+| Hora planeada | Chegadas | Média | p50 | p90 | % pontual (−1 a +5 min) |
+|---|---|---|---|---|---|
+| qui 05/11 10 h | 38 736 | 1,6 min | 1,0 min | 8,2 min | 51,8% |
+| qui 05/11 11 h | 33 425 | 1,5 min | 1,0 min | 7,5 min | 54,5% |
+
+**Linhas com mais atraso** (≥ 200 chegadas nessas horas):
+
+| Linha | Chegadas | Média | % pontual |
+|---|---|---|---|
+| 4512 | 500 | 9,7 min | 35,2% |
+| 4600 | 601 | 7,8 min | 26,6% |
+| 1717 | 518 | 7,6 min | 30,3% |
+| 1720 | 290 | 7,3 min | 23,8% |
+| 1622 | 254 | 7,2 min | 31,9% |
+
+**Linhas mais pontuais** (≥ 200 chegadas): 1229 (99,6% pontual), 1120 (92,9%), 1617 (88,4%), 2710 (87,7%), 1606 (87,4%).
+
+**Métodos de deteção** (163 k chegadas): `stopped` 35,6% · `passed` 33,6% · `geofence` 28,2% ·
+`departed` 2,6%. A incerteza média é de 8–9 s em todos os métodos, e as medianas de
+atraso são parecidas entre eles (1,0–1,7 min), o que sugere que nenhum método está
+enviesado de forma grosseira.
+
+### O que estes dados mostram (e os seus limites)
+
+- A linha **1717** aparece entre as mais atrasadas nas duas janelas. Na quarta à tarde,
+  o sentido Colégio Militar chegou a 37 min de atraso. Na quinta de manhã, o atraso
+  cresce ao longo do percurso até ~20 min no fim (captura abaixo).
+- Na chegada ao terminal há linhas com forte **adiantamento** na última paragem
+  (ex.: 4321): é típico de horários com folga no fim do percurso.
+- **4,2 horas não são um estudo.** Para comparar horas do dia e dias da semana são
+  precisos vários dias completos. O sistema já está preparado para isso; o *heatmap*
+  e o ranking da página web aplicam o mesmo filtro de cobertura.
 - **Validação oficial:** `cmlive validate` consultou `/v2/arrivals/by_stop` para as 50
   paragens com mais chegadas. A API não publicou **nenhum** `observed_arrival` (0 em
   2 205 registos; só estimativas para chegadas futuras), por isso a comparação com a
-  verdade oficial fica pendente de a CM voltar a publicar esse campo.
+  verdade oficial fica pendente.
 
 ## Capturas de ecrã
 
-Dados reais, 2026-11-04, ~17:50 (Lisboa).
+Dados reais, qui 05/11/2026, ~12:55 (Lisboa).
 
-**Mapa ao vivo:** 1 296 veículos, coloridos pelo último atraso medido (cinzento = sem chegada medida ainda).
+**Mapa ao vivo:** veículos coloridos pelo último atraso medido (cinzento = ainda sem chegada medida).
 
 ![Mapa ao vivo](docs/img/map.png)
 
-**Análise:** KPIs, *heatmap*, atraso por paragem (linha 1717, sentido 1) e ranking de linhas.
+**Análise:** KPIs, *heatmap* (só as horas com cobertura completa), atraso por paragem
+(linha 1717, sentido Colégio Militar) e ranking de linhas.
 
 ![Análise de atrasos](docs/img/analytics.png)
 
@@ -180,6 +224,7 @@ CMLIVE_RECORD_DIR=/data/recordings docker compose up -d collector  # grava as re
 uv run python -m cmlive replay data/recordings --speed 20           # volta a injetá-las no log
 uv run --extra analytics python -m cmlive export --days 7           # Parquet para DuckDB
 uv run python -m cmlive validate --stops 50                         # erro vs. observed_arrival oficial
+uv run python -m cmlive report                                      # tabelas do README a partir da BD
 ```
 
 ## Testes

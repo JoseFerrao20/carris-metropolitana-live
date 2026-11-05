@@ -236,14 +236,14 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
     tz = settings.timezone
 
     @app.get("/api/analytics/lines")
-    async def by_line(days: int = Query(7, ge=1, le=3650), min_n: int = 20):
+    async def by_line(days: int = Query(7, ge=1, le=3650), min_n: int = 100):
         rows = await _query(
             """SELECT line_id, sum(n)::int AS n,
                       round((sum(avg_delay_s * n) / sum(n))::numeric, 1)::float AS avg_delay_s,
                       round(100.0 * sum(n_on_time) / sum(n), 1)::float AS pct_on_time,
                       round(100.0 * sum(n_late) / sum(n), 1)::float AS pct_late,
                       round(100.0 * sum(n_early) / sum(n), 1)::float AS pct_early
-               FROM delay_hourly
+               FROM delay_hourly JOIN covered_hours USING (bucket)
                WHERE bucket > now() - make_interval(days => %s)
                GROUP BY line_id HAVING sum(n) >= %s
                ORDER BY avg_delay_s DESC""",
@@ -259,7 +259,7 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
                        sum(n)::int AS n,
                        round((sum(avg_delay_s * n) / sum(n))::numeric, 1)::float AS avg_delay_s,
                        round(100.0 * sum(n_on_time) / sum(n), 1)::float AS pct_on_time
-                FROM delay_hourly
+                FROM delay_hourly JOIN covered_hours USING (bucket)
                 WHERE bucket > now() - make_interval(days => %(days)s)
                   AND (%(line)s::text IS NULL OR line_id = %(line)s)
                 GROUP BY 1, 2 ORDER BY 1, 2""",

@@ -31,7 +31,8 @@
 <main>
   <h1>Análise de atrasos</h1>
   <p class="sub">Atraso = chegada observada − hora planeada no GTFS. Pontual: entre 1 min adiantado e 5 min atrasado.
-    Agregados incrementais (TimescaleDB continuous aggregates). <a href="/">← mapa ao vivo</a></p>
+    Agregados incrementais (TimescaleDB continuous aggregates). O heatmap e o ranking só usam horas
+    planeadas com recolha contínua de H−30 min a H+90 min, para não sobrerrepresentar as viagens das pontas da janela. <a href="/">← mapa ao vivo</a></p>
 
   <div class="card kpis" id="kpis"></div>
 
@@ -47,7 +48,7 @@
   </div>
 
   <div class="card">
-    <h2>Linhas com mais atraso (últimos 7 dias, mín. 20 chegadas)</h2>
+    <h2>Linhas com mais atraso (últimos 7 dias, mín. 100 chegadas)</h2>
     <table><thead><tr><th>Linha</th><th>Chegadas</th><th>Atraso médio</th><th>% pontual</th><th>% atrasado</th><th>% adiantado</th></tr></thead>
     <tbody id="lines"></tbody></table>
     <button id="more" hidden style="margin-top:10px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:inherit;cursor:pointer"></button>

@@ -48,5 +48,6 @@ Cada fase termina com um commit (ou vários), com testes a passar.
 - [x] README com capturas de ecrã e números medidos
 
 ## Próximos passos
-- [ ] Recolha de vários dias completos (o *heatmap* e o ranking precisam de mais do que 40 min)
+- [x] Recolha de 4,2 h em duas janelas (ponta da tarde; manhã → vazio), com filtro de cobertura
+- [ ] Recolha de vários dias completos, para comparar horas do dia e dias da semana
 - [ ] Repetir `cmlive validate` quando a API voltar a publicar `observed_arrival`
