@@ -172,6 +172,13 @@ async def validate(args) -> None:
     print(orjson.dumps(out, option=orjson.OPT_INDENT_2).decode())
 
 
+def report(args) -> None:
+    from .report import build
+
+    s = get_settings()
+    print(build(s.database_url, s.timezone))
+
+
 def web(args) -> None:
     import uvicorn
 
@@ -200,6 +207,7 @@ def main() -> None:
     sp.add_argument("--out", default="data/export")
     sp = sub.add_parser("validate")
     sp.add_argument("--stops", type=int, default=50)
+    sub.add_parser("report", help="tabelas Markdown com os números do README")
     sp = sub.add_parser("web")
     sp.add_argument("--host", default="0.0.0.0")
     sp.add_argument("--port", type=int, default=8000)
@@ -209,6 +217,8 @@ def main() -> None:
         gtfs(args)
     elif args.cmd == "export":
         export(args)
+    elif args.cmd == "report":
+        report(args)
     elif args.cmd == "web":
         web(args)
     else:
