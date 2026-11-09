@@ -1,0 +1,79 @@
+:root {
+  --bg: #fafafa;
+  --fg: #1d1d1f;
+  --muted: #6b6b70;
+  --card: #ffffff;
+  --card-glass: rgba(255, 255, 255, 0.94);
+  --border: #e3e3e8;
+  --accent: #c61d23;
+  --focus: #3478d6;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111113;
+    --fg: #f2f2f5;
+    --muted: #a0a0a8;
+    --card: #1c1c1f;
+    --card-glass: rgba(28, 28, 31, 0.94);
+    --border: #34343a;
+    --accent: #e5484d;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: inherit; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.center { text-align: center; padding-top: 30vh; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+select, input, button { font: inherit; color: inherit; }
+select, input { padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); }
+button.secondary { margin-top: 10px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); cursor: pointer; }
+button.link { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; font-weight: 600; }
+
+/* ---------------------------------------------------------------- mapa */
+.live { position: relative; height: 100%; }
+.map { position: absolute; inset: 0; }
+.panel {
+  position: absolute; top: 12px; left: 12px; z-index: 2; width: 290px; max-width: calc(100vw - 24px);
+  background: var(--card-glass); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+.panel h1 { font-size: 15px; margin-bottom: 6px; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 8px 0; }
+.stats div { display: flex; flex-direction: column-reverse; }
+.stats dd { margin: 0; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stats dt { color: var(--muted); font-size: 12px; }
+.legend { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted); }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.filter input { width: 100%; margin-top: 8px; }
+.panel p { margin: 6px 0; font-size: 12px; }
+.panel a { font-size: 12px; }
+
+/* ---------------------------------------------------------------- análise */
+.analytics { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 0 0 16px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.kpis div { display: flex; flex-direction: column; }
+.kpis dd { margin: 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpis dt { color: var(--muted); font-size: 12px; }
+.heat-scroll, .chart-scroll, .table-scroll { overflow-x: auto; }
+.heat { border-collapse: separate; border-spacing: 2px; font-size: 11px; min-width: 620px; width: 100%; }
+.heat th { color: var(--muted); font-weight: 400; }
+.heat td { height: 24px; border-radius: 3px; }
+.scale { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.scale i { width: 140px; height: 10px; border-radius: 3px; background: linear-gradient(90deg, #3478d6, #e9e9ee 33%, #f2b134 66%, #d6342c); }
+.inline-select { display: inline-flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+svg .bar { fill: var(--accent); }
+svg .axis { stroke: var(--border); }
+svg text { fill: var(--muted); font-size: 11px; }
+table.lines { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+table.lines th, table.lines td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+table.lines th:first-child, table.lines td:first-child { text-align: left; }
+table.lines tr[aria-selected="true"] { background: rgba(127, 127, 127, 0.12); }

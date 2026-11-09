@@ -24,12 +24,16 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1400, "height": 900}, device_scale_factor=2)
 
         page.goto(BASE + "/")
-        page.wait_for_function("document.getElementById('n').textContent !== '–'", timeout=30_000)
-        page.wait_for_timeout(8_000)  # deixa chegar alguns deltas e carregar os tiles
+        page.wait_for_function(
+            "+(document.querySelector('[data-testid=vehicles]')?.textContent || '0')"
+            ".replace(/\\D/g, '') > 0",
+            timeout=30_000,
+        )
+        page.wait_for_timeout(60_000)  # deltas suficientes para a latência no painel
         page.screenshot(path=OUT / "map.png")
 
         page.goto(BASE + "/analytics")
-        page.wait_for_selector("#lines tr", timeout=30_000)
+        page.wait_for_selector("table.lines tbody tr", timeout=30_000)
         page.wait_for_timeout(2_000)
         page.screenshot(path=OUT / "analytics.png", full_page=True)
         browser.close()

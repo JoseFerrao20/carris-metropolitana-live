@@ -34,7 +34,7 @@ flowchart LR
     D["delay-engine<br/>deteção de chegada<br/>watermark por veículo"]
     T[("TimescaleDB<br/>vehicle_positions (hypertable)<br/>stop_arrivals · GTFS<br/>continuous aggregates")]
     W["web (FastAPI)<br/>REST + SSE"]
-    B["Browser<br/>mapa MapLibre + análises"]
+    B["Browser · React + TypeScript<br/>mapa MapLibre + análises"]
     X[("DuckDB / Parquet<br/>análise offline")]
 
     V --> C --> K
@@ -55,7 +55,8 @@ flowchart LR
 | Séries temporais | **TimescaleDB** (Postgres) | Hypertables, *continuous aggregates* (agregação **incremental** nativa), SQL normal para os *joins* com o GTFS |
 | Análise offline | **DuckDB** | Ler Parquet exportado; notebooks rápidos sem carregar a BD |
 | Web | **FastAPI** + **SSE** | O mapa só recebe dados do servidor, por isso SSE chega e é mais simples que WebSocket: reconexão automática e passa por proxies HTTP |
-| Mapa | **MapLibre GL JS** + tiles OSM | Open-source, WebGL e sem chave de API |
+| Frontend | **React 18 + TypeScript** (Vite) | SPA com duas páginas; TypeScript estrito com tipos espelhados da API; o mapa é carregado *lazy* (a página de análise pesa 57 kB gzip) |
+| Mapa | **MapLibre GL JS** + tiles OSM | Open-source, WebGL e sem chave de API: 1 000+ pontos animados numa camada WebGL, sem DOM |
 | Testes | `pytest`, `hypothesis`, `respx` | Propriedades de idempotência e ordem; mock HTTP |
 
 ### Garantias de entrega e tratamento de falhas
@@ -214,7 +215,7 @@ open http://localhost:8000/analytics
 | `ingestor` | Tópico → `vehicle_positions` em lotes, idempotente |
 | `delay-engine` | Tópico → deteção de chegadas → `stop_arrivals` + tópico `stop-arrivals` |
 | `gtfs` | Carrega o GTFS (só se mudou). Para um ficheiro local: `CMLIVE_GTFS_ZIP=/data/gtfs.zip` |
-| `web` | Mapa (SSE), análises, `/api/*`, `/metrics` |
+| `web` | Frontend React (mapa e análises), `/api/*` (REST + SSE), `/metrics` |
 | `prometheus` | Opcional: `docker compose --profile observability up -d` |
 
 Outras ferramentas:
@@ -227,10 +228,49 @@ uv run python -m cmlive validate --stops 50                         # erro vs. o
 uv run python -m cmlive report                                      # tabelas do README a partir da BD
 ```
 
+## Frontend
+
+`frontend/` é uma SPA em React + TypeScript (Vite), servida pelo FastAPI a partir do
+*build* (`src/cmlive/web/dist`, gerado no Docker num estágio Node).
+
+```
+frontend/src/
+├── api/        tipos espelhados do JSON do backend + cliente com cancelamento
+├── live/       Fleet (estado da frota, fora do React) + useLiveFleet (SSE)
+├── lib/        classificação/cores dos atrasos, quantis, useAsync
+├── components/ MapView, LivePanel, Heatmap, StopChart, LinesTable, KpiRow
+└── pages/      LivePage (/) e AnalyticsPage (/analytics)
+```
+
+Decisões que vale a pena explicar:
+
+- **O estado da frota vive fora do React** (`live/fleet.ts`). O mapa anima mais de 1 000
+  veículos e o React só recebe contadores uma vez por segundo, por isso não há
+  *re-renders* por cada posição.
+- **O mapa só envia dados ao MapLibre quando é preciso,** no máximo a 20 fps. Cada
+  `setData` reprocessa o GeoJSON todo num *worker*. A 60 fps, isso ocupava **25%** da
+  *thread* principal e atrasava a navegação **5,8 s**; com o limite e sem redesenhos
+  quando nada muda, passou para **4%** e **1,0 s** (medido com Chromium sem GPU, via CDP).
+- **O snapshot inicial não conta como latência,** só os *deltas*. Se contasse, media-se
+  a idade do snapshot, que pode chegar a 5 min.
+- **Popups construídos em DOM** (`textContent`), não com HTML em string: os dados vindos da
+  API nunca são interpretados como HTML (há um teste para isso).
+- **Pedidos canceláveis** (`AbortController`): ao trocar de linha, uma resposta antiga
+  nunca se sobrepõe à nova.
+
+```bash
+cd frontend
+npm ci
+npm run dev        # Vite em :5173, com proxy de /api para o backend em :8000
+npm test           # Vitest + Testing Library
+npm run e2e        # Playwright sobre o build, com a API simulada
+```
+
 ## Testes
 
 ```bash
-make test        # 70 testes unitários e de propriedades (sem dependências externas)
+make test        # 73 testes Python, unitários e de propriedades (sem dependências externas)
+make test-front  # frontend: typecheck, lint, 45 testes Vitest e 2 smoke tests Playwright
 make up-infra    # TimescaleDB + Redpanda
 make test-all    # + teste ponta a ponta contra a infraestrutura real
 ```
@@ -241,6 +281,12 @@ O que é testado:
 - **Falhas da API**: 5xx, timeouts, 404 com `[]`, HTML em vez de JSON; retry com backoff e *circuit breaker* (abre, sonda, fecha).
 - **Duplicados e ordem**: testes de propriedades (Hypothesis) mostram que baralhar e duplicar eventos dentro da janela não muda as chegadas detetadas.
 - **Tempo GTFS**: horas > 24:00, dia de serviço anterior, linhas circulares e dias de mudança de hora. Este teste apanhou um bug real: somar `timedelta` a um `datetime` com fuso dava um erro de 1 h nesses dias.
+- **Frontend**: regras do estado da frota (o snapshot não conta como latência, posições
+  antigas ignoradas, interpolação), escalas de cor e fronteiras de "pontual", o *hook* SSE
+  com um `EventSource` simulado, componentes com Testing Library (teclado, seleção,
+  expansão do ranking), a página de análise com `fetch` simulado (incluindo erro 503), e a
+  ausência de injeção de HTML nos popups. O Playwright abre o *build* real num Chromium,
+  com a API e a stream SSE simuladas.
 - **Ponta a ponta** (CI com TimescaleDB e Redpanda reais): uma viagem real do GTFS com trajetória sintética (+120 s, 30% duplicados, fora de ordem) dá exatamente uma chegada por paragem com atraso de 120 s; reprocessar o mesmo stream não cria linhas; o *continuous aggregate* e a API refletem os dados.
 
 Antes de o domínio da API estar autorizado, o sistema também foi corrido com

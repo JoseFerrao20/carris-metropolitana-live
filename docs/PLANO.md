@@ -51,3 +51,10 @@ Cada fase termina com um commit (ou vários), com testes a passar.
 - [x] Recolha de 4,2 h em duas janelas (ponta da tarde; manhã → vazio), com filtro de cobertura
 - [ ] Recolha de vários dias completos, para comparar horas do dia e dias da semana
 - [ ] Repetir `cmlive validate` quando a API voltar a publicar `observed_arrival`
+
+## Fase 8 — Frontend em React + TypeScript
+- [x] SPA em React 18 + TypeScript estrito (Vite), servida pelo FastAPI; estágio Node no Docker
+- [x] Estado da frota fora do React; atualizações do mapa limitadas a 20 fps e só quando há mudanças (CPU 25% → 4%)
+- [x] Vitest + Testing Library (45 testes) e smoke tests em Playwright; job de frontend na CI
+- [ ] Testes de acessibilidade automáticos (axe) e auditoria Lighthouse
+

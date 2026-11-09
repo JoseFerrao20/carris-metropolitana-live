@@ -9,6 +9,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from importlib import resources
+from pathlib import Path
 from typing import Any
 
 import orjson
@@ -29,6 +30,16 @@ E2E_LATENCY = Histogram(
     ["stage"],
     buckets=(0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 45, 60, 90, 120),
 )
+
+
+class ImmutableStaticFiles(StaticFiles):
+    """Ficheiros do build com hash no nome: cache longa e imutável."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        if resp.status_code == 200:
+            resp.headers["cache-control"] = "public, max-age=31536000, immutable"
+        return resp
 
 
 class LiveState:
@@ -138,6 +149,13 @@ async def _warm_start(pool: AsyncConnectionPool, state: LiveState) -> None:
     state.dirty.clear()
 
 
+async def _safe_warm_start(pool: AsyncConnectionPool, state: LiveState) -> None:
+    try:
+        await _warm_start(pool, state)
+    except Exception as e:  # BD indisponível: o mapa enche-se só com o stream
+        log.warning("warm start do mapa falhou: %s", e)
+
+
 def create_app(settings: Settings | None = None, with_background: bool = True) -> FastAPI:
     settings = settings or get_settings()
     state = LiveState(settings.stale_after_s)
@@ -148,9 +166,10 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
         tasks: list[asyncio.Task] = []
         await app.state.pool.open(wait=False)
         if with_background:
-            with contextlib.suppress(Exception):
-                await _warm_start(app.state.pool, state)
+            # Nada aqui pode bloquear o arranque: com a BD em baixo, a interface tem de
+            # ser servida na mesma (o mapa enche-se com o stream quando houver dados).
             tasks = [
+                asyncio.create_task(_safe_warm_start(app.state.pool, state)),
                 asyncio.create_task(_consume_bus(settings, state)),
                 asyncio.create_task(_ticker(state)),
             ]
@@ -161,23 +180,30 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
 
     app = FastAPI(title="Carris Metropolitana Live", lifespan=lifespan)
     app.state.live = state
-    app.mount(
-        "/static",
-        StaticFiles(directory=str(resources.files("cmlive.web").joinpath("static"))),
-        name="static",
-    )
+    # Frontend React (frontend/ → `npm run build` → src/cmlive/web/dist).
+    dist = Path(settings.frontend_dist or str(resources.files("cmlive.web").joinpath("dist")))
+    if (dist / "assets").is_dir():
+        # Ficheiros com hash no nome: podem ficar em cache para sempre.
+        app.mount("/assets", ImmutableStaticFiles(directory=dist / "assets"), name="assets")
 
-    def _page(name: str) -> HTMLResponse:
-        html = resources.files("cmlive.web").joinpath("static", name).read_text()
-        return HTMLResponse(html)
+    def _spa() -> HTMLResponse:
+        index = dist / "index.html"
+        if not index.is_file():
+            return HTMLResponse(
+                "<p>Frontend não compilado: corra <code>npm ci && npm run build</code> em "
+                "<code>frontend/</code> (o Docker faz isto automaticamente).</p>",
+                status_code=503,
+            )
+        # O index.html não pode ficar em cache: aponta para os ficheiros da versão atual.
+        return HTMLResponse(index.read_text(), headers={"cache-control": "no-cache"})
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
-        return _page("index.html")
+        return _spa()
 
     @app.get("/analytics", response_class=HTMLResponse)
     async def analytics_page():
-        return _page("analytics.html")
+        return _spa()
 
     @app.get("/api/vehicles")
     async def vehicles():

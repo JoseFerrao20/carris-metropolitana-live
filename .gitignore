@@ -9,3 +9,7 @@ data/
 *.parquet
 *.duckdb
 .env
+
+# Build do frontend (gerado por `npm run build` em frontend/)
+src/cmlive/web/dist/
+frontend/node_modules/

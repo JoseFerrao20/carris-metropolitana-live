@@ -1,10 +1,16 @@
-.PHONY: install test test-all lint up-infra up down logs gtfs-local bench
+.PHONY: install test test-front test-all lint up-infra up down logs gtfs-local bench front
 
 install:
 	uv sync
 
 test:
 	uv run pytest
+
+test-front: ## frontend: typecheck, lint, Vitest, build e Playwright
+	cd frontend && npm ci && npm run typecheck && npm run lint && npm test && npm run build && npm run e2e
+
+front: ## compila o frontend para src/cmlive/web/dist (servido pelo FastAPI)
+	cd frontend && npm ci && npm run build
 
 test-all: ## inclui os testes de integração (precisa de `make up-infra`)
 	uv run pytest -m "" -v

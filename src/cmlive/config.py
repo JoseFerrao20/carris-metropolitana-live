@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     geofence_m: float = 40.0
     timezone: str = "Europe/Lisbon"
 
+    # Frontend compilado; vazio = src/cmlive/web/dist (dentro do pacote)
+    frontend_dist: str = ""
+
     # Gravação NDJSON (replay/testes); vazio = desligado
     record_dir: str = ""
 
