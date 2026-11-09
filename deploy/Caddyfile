@@ -1,0 +1,25 @@
+# HTTPS automático (Let's Encrypt). SITE_ADDRESS vem do .env (ex.: 203-0-113-10.sslip.io).
+{$SITE_ADDRESS} {
+	# Comprime tudo exceto o stream SSE: comprimir obrigaria o proxy a acumular eventos.
+	@compressible not path /api/stream
+	encode @compressible zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), camera=(), microphone=()"
+		# style-src 'unsafe-inline': cores do heatmap/legenda em atributos style.
+		# blob: em worker-src: o MapLibre cria os workers a partir de blobs.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self' https://tile.openstreetmap.org; worker-src 'self' blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	# Métricas Prometheus só dentro da rede Docker, nunca na Internet.
+	@metrics path /metrics
+	respond @metrics 404
+
+	reverse_proxy web:8000 {
+		flush_interval -1 # entrega cada evento SSE assim que chega
+	}
+}

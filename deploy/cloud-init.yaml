@@ -1,0 +1,8 @@
+#cloud-config
+# Colar em: Oracle Cloud → Compute → Create instance → "Show advanced options"
+#   → Management → "Paste cloud-init script".
+# Instala tudo sozinho no primeiro arranque. Progresso: sudo tail -f /var/log/cloud-init-output.log
+package_update: true
+packages: [git, curl]
+runcmd:
+  - [bash, -c, "git clone -q --depth 50 https://github.com/JoseFerrao20/carris-metropolitana-live.git /opt/cmlive && bash /opt/cmlive/deploy/install.sh"]

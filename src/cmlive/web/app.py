@@ -190,6 +190,8 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
         )
     )
     # Frontend React (frontend/ → `npm run build` → src/cmlive/web/dist).
+    # As rotas da SPA aceitam HEAD: monitores de disponibilidade usam-no (o FastAPI não o
+    # acrescenta sozinho às rotas GET e respondia 405).
     dist = Path(settings.frontend_dist or str(resources.files("cmlive.web").joinpath("dist")))
     if (dist / "assets").is_dir():
         # Ficheiros com hash no nome: podem ficar em cache para sempre.
@@ -206,15 +208,15 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
         # O index.html não pode ficar em cache: aponta para os ficheiros da versão atual.
         return HTMLResponse(index.read_text(), headers={"cache-control": "no-cache"})
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
     async def index():
         return _spa()
 
-    @app.get("/analytics", response_class=HTMLResponse)
+    @app.api_route("/analytics", methods=["GET", "HEAD"], response_class=HTMLResponse)
     async def analytics_page():
         return _spa()
 
-    @app.get("/entrar", response_class=HTMLResponse)
+    @app.api_route("/entrar", methods=["GET", "HEAD"], response_class=HTMLResponse)
     async def login_page():
         return _spa()
 

@@ -198,6 +198,23 @@ Dados reais, qui 05/11/2026, ~12:55 (Lisboa).
 
 ---
 
+## Pôr online
+
+Configuração de produção em [`deploy/`](deploy/) e guia em [`docs/DEPLOY.md`](docs/DEPLOY.md)
+(Oracle Cloud Always Free, 0 €). Uma VM recebe o script `cloud-init` e instala tudo sozinha:
+- **Caddy** com HTTPS automático (Let's Encrypt), HSTS, cabeçalhos de segurança e uma
+  **CSP restrita** (testada no browser: o mapa, os *workers* e os *tiles* funcionam sem
+  violações);
+- o SSE passa pelo *proxy* sem *buffering* nem compressão;
+- `/metrics` fica fechado ao público, e a BD e o Redpanda só escutam em `127.0.0.1`;
+- cookie de sessão `Secure`, password da BD aleatória, logs com rotação e reinício
+  automático;
+- GTFS atualizado todos os dias por cron.
+
+Antes de publicar, ensaiei a stack de produção localmente atrás do Caddy: redirecionamento
+HTTP→HTTPS, cabeçalhos, CSP, SSE, cookie `Secure` e `/metrics` bloqueado. Todas as
+dependências nativas têm binários para ARM64 (verificado nos *lockfiles*).
+
 ## Correr localmente
 
 Requisitos: Docker e acesso à Internet (a `api.carrismetropolitana.pt` e aos tiles do OpenStreetMap).

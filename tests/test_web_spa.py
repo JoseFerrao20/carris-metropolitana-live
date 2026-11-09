@@ -22,10 +22,11 @@ def test_serves_spa_routes_and_hashed_assets(tmp_path):
     )
     (tmp_path / "assets" / "app-abc123.js").write_text("console.log(1)")
     with client(str(tmp_path)) as c:
-        for path in ("/", "/analytics"):
+        for path in ("/", "/analytics", "/entrar"):
             r = c.get(path)
             assert r.status_code == 200 and 'id="root"' in r.text
             assert r.headers["cache-control"] == "no-cache"
+            assert c.head(path).status_code == 200  # monitores de disponibilidade usam HEAD
         a = c.get("/assets/app-abc123.js")
         assert a.status_code == 200
         assert "immutable" in a.headers["cache-control"]

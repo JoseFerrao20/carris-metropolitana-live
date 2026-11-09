@@ -1,0 +1,45 @@
+# Produção: usar por cima do docker-compose.yml
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+# Lê POSTGRES_PASSWORD e SITE_ADDRESS do ficheiro .env (criado por deploy/install.sh).
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" } # o disco não enche com logs
+
+services:
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?defina SITE_ADDRESS no .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificados: não se perdem ao recriar o contentor
+      - caddy_config:/config
+    depends_on: [web]
+    <<: *logging
+
+  web:
+    environment:
+      CMLIVE_COOKIE_SECURE: "true"
+      # O uvicorn só aceita X-Forwarded-For do Caddy (rede interna do Docker), para o
+      # limite de tentativas de login usar o IP real do cliente.
+      FORWARDED_ALLOW_IPS: "*"
+    <<: *logging
+
+  timescaledb:
+    restart: unless-stopped
+    <<: *logging
+  redpanda:
+    restart: unless-stopped
+    <<: *logging
+  collector: *logging
+  ingestor: *logging
+  delay-engine: *logging
+  gtfs: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:
