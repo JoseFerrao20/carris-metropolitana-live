@@ -56,5 +56,7 @@ Cada fase termina com um commit (ou vários), com testes a passar.
 - [x] SPA em React 18 + TypeScript estrito (Vite), servida pelo FastAPI; estágio Node no Docker
 - [x] Estado da frota fora do React; atualizações do mapa limitadas a 20 fps e só quando há mudanças (CPU 25% → 4%)
 - [x] Vitest + Testing Library (45 testes) e smoke tests em Playwright; job de frontend na CI
-- [ ] Testes de acessibilidade automáticos (axe) e auditoria Lighthouse
+- [x] Testes de acessibilidade automáticos (axe-core no jsdom e no browser, claro e escuro)
+- [x] Contas com sessões no servidor e linhas favoritas
+- [ ] Auditoria Lighthouse (desempenho) na CI
 

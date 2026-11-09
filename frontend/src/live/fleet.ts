@@ -12,6 +12,24 @@ interface Entry {
 
 export const ANIMATION_MS = 2000;
 
+export type LineMatcher = (lineId: string | null) => boolean;
+
+/** Filtro do mapa: texto da linha e/ou só favoritas. `key` muda sempre que o filtro muda. */
+export interface MapFilter {
+  key: string;
+  match: LineMatcher | null;
+}
+
+export function buildFilter(text: string, onlyFavorites: boolean, favorites: ReadonlySet<string>): MapFilter {
+  const t = text.trim();
+  if (!t && !onlyFavorites) return { key: "", match: null };
+  const favKey = onlyFavorites ? [...favorites].sort().join(",") : "";
+  return {
+    key: `${t}|${onlyFavorites ? "fav:" + favKey : ""}`,
+    match: (line) => (!t || line === t) && (!onlyFavorites || (line !== null && favorites.has(line))),
+  };
+}
+
 /** easeInOutQuad: começa e acaba devagar, para o veículo não "saltar". */
 export function ease(k: number): number {
   const t = Math.min(1, Math.max(0, k));
@@ -102,10 +120,10 @@ export class Fleet {
   }
 
   /** GeoJSON com a posição animada de cada veículo, opcionalmente filtrado por linha. */
-  toGeoJSON(nowMs: number, lineFilter = ""): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  toGeoJSON(nowMs: number, match: LineMatcher | null = null): GeoJSON.FeatureCollection<GeoJSON.Point> {
     const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
     for (const [id, e] of this.entries) {
-      if (lineFilter && e.data.line_id !== lineFilter) continue;
+      if (match && !match(e.data.line_id)) continue;
       features.push({
         type: "Feature",
         id,

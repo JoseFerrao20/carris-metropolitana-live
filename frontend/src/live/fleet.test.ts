@@ -1,5 +1,5 @@
 import { T0, vehicle } from "../test/factories";
-import { ANIMATION_MS, ease, Fleet, interpolate } from "./fleet";
+import { ANIMATION_MS, buildFilter, ease, Fleet, interpolate } from "./fleet";
 
 const WALL = T0 + 21;
 
@@ -54,7 +54,7 @@ describe("Fleet", () => {
   it("remove veículos e filtra por linha no GeoJSON", () => {
     const f = new Fleet();
     f.applySnapshot([vehicle(), vehicle({ vehicle_id: "b", line_id: "1604" })], 0);
-    expect(f.toGeoJSON(0, "1604").features.map((x) => x.id)).toEqual(["b"]);
+    expect(f.toGeoJSON(0, buildFilter("1604", false, new Set()).match).features.map((x) => x.id)).toEqual(["b"]);
     f.applyDelta({ vehicles: [], removed: ["b"] }, 0, WALL);
     expect(f.toGeoJSON(0).features).toHaveLength(1);
   });
@@ -94,5 +94,18 @@ describe("Fleet: deteção de alterações para o mapa", () => {
     expect(f.version).toBe(v1 + 1);
     f.applyDelta({ vehicles: [vehicle({ delay_s: 60 })], removed: ["nao-existe"] }, 6000, WALL);
     expect(f.version).toBe(v1 + 1); // nada mudou
+  });
+});
+
+describe("buildFilter", () => {
+  const favs = new Set(["1717", "4512"]);
+  it("sem filtros não filtra nada", () => {
+    expect(buildFilter("", false, favs)).toEqual({ key: "", match: null });
+  });
+  it("combina texto e favoritas, e a chave muda quando as favoritas mudam", () => {
+    const f = buildFilter("", true, favs);
+    expect(["1717", "1604", null].map((l) => f.match!(l))).toEqual([true, false, false]);
+    expect(buildFilter("1717", true, favs).match!("4512")).toBe(false);
+    expect(buildFilter("", true, new Set(["1717"])).key).not.toBe(f.key);
   });
 });

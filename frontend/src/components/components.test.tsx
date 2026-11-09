@@ -1,8 +1,7 @@
-import { ROUTER_FUTURE } from "../routerFuture";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
 import { line, stop, vehicle } from "../test/factories";
+import { mockFetch, renderApp } from "../test/render";
 import { Heatmap } from "./Heatmap";
 import { LinesTable } from "./LinesTable";
 import { LivePanel } from "./LivePanel";
@@ -73,15 +72,14 @@ describe("LinesTable", () => {
 describe("LivePanel", () => {
   it("mostra o resumo, a legenda e o estado da ligação", async () => {
     const onFilter = vi.fn();
-    render(
-      <MemoryRouter future={ROUTER_FUTURE}>
-        <LivePanel
+    mockFetch({});
+    renderApp(
+      <LivePanel
           summary={{ vehicles: 1296, updatesPerMinute: 3500, vehicleToBrowserP50: 20.8, collectorToBrowserP50: 0.77 }}
           status="reconnecting"
           lineFilter=""
           onLineFilter={onFilter}
-        />
-      </MemoryRouter>,
+        />,
     );
     expect(screen.getByTestId("vehicles")).toHaveTextContent("1296"); // pt-PT não agrupa 4 dígitos
     expect(screen.getByText("20,8 s")).toBeInTheDocument();

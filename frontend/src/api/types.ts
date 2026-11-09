@@ -79,3 +79,8 @@ export interface Stats {
 
 export type LatencyStage = "vehicle_to_browser" | "collector_to_browser" | "log_to_browser";
 export type LatencySamples = Record<LatencyStage, number[]>;
+
+export interface User {
+  id: number;
+  email: string;
+}

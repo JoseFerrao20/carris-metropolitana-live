@@ -1,7 +1,6 @@
-import { ROUTER_FUTURE } from "../routerFuture";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { mockFetch, renderApp } from "../test/render";
 import type { Stats } from "../api/types";
 import { line, stop } from "../test/factories";
 import { AnalyticsPage } from "./AnalyticsPage";
@@ -20,29 +19,16 @@ const STATS: Stats = {
 };
 
 function mockApi(overrides: Record<string, unknown> = {}) {
-  const routes: Record<string, unknown> = {
+  return mockFetch({
     "/api/stats": STATS,
     "/api/analytics/lines": [line({ line_id: "4512" }), line({ line_id: "1717" })],
     "/api/analytics/heatmap": [{ dow: 4, hour: 10, n: 100, avg_delay_s: 94, pct_on_time: 51.8 }],
     "/api/analytics/stops": [stop()],
     ...overrides,
-  };
-  const spy = vi.fn(async (input: RequestInfo | URL) => {
-    const url = new URL(String(input), "http://x");
-    const body = routes[url.pathname];
-    if (body instanceof Response) return body;
-    return new Response(JSON.stringify(body), { status: 200 });
   });
-  vi.stubGlobal("fetch", spy);
-  return spy;
 }
 
-const renderPage = () =>
-  render(
-    <MemoryRouter future={ROUTER_FUTURE}>
-      <AnalyticsPage />
-    </MemoryRouter>,
-  );
+const renderPage = () => renderApp(<AnalyticsPage />, { route: "/analytics" });
 
 afterEach(() => vi.unstubAllGlobals());
 

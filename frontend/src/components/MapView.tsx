@@ -3,11 +3,11 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import type { Vehicle } from "../api/types";
 import { DELAY_COLOR, EARLY_S, ON_TIME_MAX_S, VERY_LATE_S, formatDuration } from "../lib/delay";
-import type { Fleet } from "../live/fleet";
+import type { Fleet, MapFilter } from "../live/fleet";
 
 interface Props {
   fleet: Fleet;
-  lineFilter: string;
+  filter: MapFilter;
 }
 
 const UNKNOWN = -99999; // sentinela para "sem atraso medido" na propriedade `delay`
@@ -50,10 +50,10 @@ export function vehiclePopup(v: Vehicle, wallS: number): HTMLElement {
   return root;
 }
 
-export function MapView({ fleet, lineFilter }: Props) {
+export function MapView({ fleet, filter }: Props) {
   const container = useRef<HTMLDivElement>(null);
-  const filterRef = useRef(lineFilter);
-  filterRef.current = lineFilter;
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
 
   useEffect(() => {
     if (!container.current) return;
@@ -113,10 +113,11 @@ export function MapView({ fleet, lineFilter }: Props) {
       const last = { atMs: -Infinity, version: -1, filter: "" };
       const draw = () => {
         const now = performance.now();
-        if (shouldRedraw(now, last, fleet, filterRef.current)) {
+        const f = filterRef.current;
+        if (shouldRedraw(now, last, fleet, f.key)) {
           const src = map.getSource("vehicles") as GeoJSONSource | undefined;
-          src?.setData(fleet.toGeoJSON(now, filterRef.current));
-          Object.assign(last, { atMs: now, version: fleet.version, filter: filterRef.current });
+          src?.setData(fleet.toGeoJSON(now, f.match));
+          Object.assign(last, { atMs: now, version: fleet.version, filter: f.key });
         }
         frame = requestAnimationFrame(draw);
       };

@@ -266,11 +266,47 @@ npm test           # Vitest + Testing Library
 npm run e2e        # Playwright sobre o build, com a API simulada
 ```
 
+## Contas e linhas favoritas
+
+O mapa e a análise são públicos. Quem cria conta pode marcar **linhas favoritas**, que
+aparecem num cartão próprio na análise e podem filtrar o mapa ("só as minhas linhas").
+
+| Aspeto | Implementação |
+|---|---|
+| Sessões | No servidor (tabela `sessions`), não JWT: o logout revoga a sessão de facto, mesmo que o cookie tenha sido copiado. Na BD só fica o sha256 do token |
+| Cookie | `HttpOnly` (o JavaScript não o lê), `SameSite=Lax`, `Secure` configurável (`CMLIVE_COOKIE_SECURE=true` atrás de HTTPS), 30 dias |
+| Passwords | Argon2id, calculado numa *thread* para não bloquear o *event loop* que serve o SSE; *rehash* automático se os parâmetros mudarem |
+| CSRF | `SameSite=Lax` e recusa de pedidos que alteram dados com `Origin` de outro site |
+| Enumeração de contas | Login com a mesma mensagem e o mesmo tempo com ou sem conta (verifica um hash fictício quando o email não existe) |
+| Força bruta | 5 tentativas falhadas por IP + email em 15 min, depois 429 |
+
+API: `POST /api/auth/register|login|logout`, `GET /api/auth/me`,
+`GET /api/me/favorites`, `PUT|DELETE /api/me/favorites/{linha}`.
+
+## Acessibilidade
+
+Os testes de acessibilidade correm na CI e cobrem WCAG 2.1 A/AA em dois níveis:
+
+- **Componentes** (Vitest + axe-core, jsdom): páginas e componentes nos vários estados
+  (anónimo, com sessão, formulário com erro). Um teste de controlo garante que o *helper*
+  deteta mesmo violações.
+- **Browser real** (Playwright + `@axe-core/playwright`): as três páginas, com e sem
+  sessão, em **modo claro e escuro**, incluindo **contraste de cor** (que o jsdom não
+  calcula). Logo à primeira execução apanhou um botão com contraste de 3,91:1 no modo
+  escuro, abaixo do mínimo de 4,5:1; passou para 5,83:1.
+- **Teclado**: o formulário de entrada usa-se só com Tab e Enter, e em caso de erro o foco
+  vai para a mensagem (`role="alert"`), para ser anunciada pelos leitores de ecrã.
+
+Também no código: etiquetas associadas a todos os campos, `aria-invalid` e
+`aria-describedby` nos erros e dicas, `aria-pressed` nas estrelas, uma região `aria-live`
+que anuncia as mudanças de favoritas, um *heatmap* em `<table>` com cabeçalhos e
+descrição por célula, e gráficos SVG com `role="img"` e nome acessível.
+
 ## Testes
 
 ```bash
-make test        # 73 testes Python, unitários e de propriedades (sem dependências externas)
-make test-front  # frontend: typecheck, lint, 45 testes Vitest e 2 smoke tests Playwright
+make test        # 79 testes Python, unitários e de propriedades (sem dependências externas)
+make test-front  # frontend: typecheck, lint, 61 testes Vitest e 16 testes Playwright
 make up-infra    # TimescaleDB + Redpanda
 make test-all    # + teste ponta a ponta contra a infraestrutura real
 ```
@@ -281,6 +317,10 @@ O que é testado:
 - **Falhas da API**: 5xx, timeouts, 404 com `[]`, HTML em vez de JSON; retry com backoff e *circuit breaker* (abre, sonda, fecha).
 - **Duplicados e ordem**: testes de propriedades (Hypothesis) mostram que baralhar e duplicar eventos dentro da janela não muda as chegadas detetadas.
 - **Tempo GTFS**: horas > 24:00, dia de serviço anterior, linhas circulares e dias de mudança de hora. Este teste apanhou um bug real: somar `timedelta` a um `datetime` com fuso dava um erro de 1 h nesses dias.
+- **Autenticação** (contra Postgres real): cookie `HttpOnly`/`SameSite`, token guardado só
+  como hash, email duplicado sem distinguir maiúsculas, logout que invalida um cookie
+  copiado, mesma resposta com ou sem conta, bloqueio ao fim de 5 tentativas, recusa de
+  `Origin` externo, favoritas privadas, idempotentes e validadas.
 - **Frontend**: regras do estado da frota (o snapshot não conta como latência, posições
   antigas ignoradas, interpolação), escalas de cor e fronteiras de "pontual", o *hook* SSE
   com um `EventSource` simulado, componentes com Testing Library (teclado, seleção,

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { AccountBar } from "./AccountBar";
 import { DELAY_COLOR, DELAY_LABEL, formatDuration, type DelayClass } from "../lib/delay";
 import type { ConnectionStatus, FleetSummary } from "../live/useLiveFleet";
 
@@ -7,6 +8,9 @@ interface Props {
   status: ConnectionStatus;
   lineFilter: string;
   onLineFilter: (v: string) => void;
+  favoritesCount?: number;
+  onlyFavorites?: boolean;
+  onOnlyFavorites?: (v: boolean) => void;
 }
 
 const STATUS_TEXT: Record<ConnectionStatus, string> = {
@@ -17,7 +21,15 @@ const STATUS_TEXT: Record<ConnectionStatus, string> = {
 
 const LEGEND: DelayClass[] = ["early", "on_time", "late", "very_late", "unknown"];
 
-export function LivePanel({ summary, status, lineFilter, onLineFilter }: Props) {
+export function LivePanel({
+  summary,
+  status,
+  lineFilter,
+  onLineFilter,
+  favoritesCount = 0,
+  onlyFavorites = false,
+  onOnlyFavorites,
+}: Props) {
   return (
     <aside className="panel" aria-label="Resumo ao vivo">
       <h1>Carris Metropolitana · ao vivo</h1>
@@ -56,10 +68,19 @@ export function LivePanel({ summary, status, lineFilter, onLineFilter }: Props) 
           inputMode="numeric"
         />
       </label>
+      {favoritesCount > 0 && onOnlyFavorites && (
+        <label className="check">
+          <input type="checkbox" checked={onlyFavorites} onChange={(e) => onOnlyFavorites(e.target.checked)} />
+          Só as minhas linhas ({favoritesCount})
+        </label>
+      )}
       <p className="muted" role="status">
         {STATUS_TEXT[status]}
       </p>
-      <Link to="/analytics">Análise de atrasos →</Link>
+      <p>
+        <Link to="/analytics">Análise de atrasos →</Link>
+      </p>
+      <AccountBar />
     </aside>
   );
 }
