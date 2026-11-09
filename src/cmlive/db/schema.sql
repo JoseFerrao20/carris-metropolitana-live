@@ -118,3 +118,29 @@ CREATE TABLE IF NOT EXISTS gtfs.feed_info (
     feed_version text, loaded_at timestamptz, source_url text, sha256 text,
     n_trips integer, n_stop_times integer
 );
+
+-- ------------------------------------------------------------------ autenticação
+-- Sessões no servidor (e não JWT): o logout revoga mesmo a sessão.
+-- Só se guarda o hash do token; quem ler a BD não consegue usar as sessões.
+CREATE TABLE IF NOT EXISTS users (
+    id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    email         text        NOT NULL,
+    password_hash text        NOT NULL,                 -- Argon2id
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(email));
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash  bytea       PRIMARY KEY,                -- sha256 do token do cookie
+    user_id     bigint      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    expires_at  timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
+
+CREATE TABLE IF NOT EXISTS favorite_lines (
+    user_id    bigint      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    line_id    text        NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, line_id)
+);

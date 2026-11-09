@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     geofence_m: float = 40.0
     timezone: str = "Europe/Lisbon"
 
+    # Autenticação
+    session_days: int = 30
+    cookie_secure: bool = False  # ponha CMLIVE_COOKIE_SECURE=true atrás de HTTPS
+
     # Frontend compilado; vazio = src/cmlive/web/dist (dentro do pacote)
     frontend_dist: str = ""
 

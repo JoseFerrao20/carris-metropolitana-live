@@ -20,7 +20,9 @@ from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 from psycopg_pool import AsyncConnectionPool
 
 from ..config import Settings, get_settings
+from ..db.repo import apply_schema
 from ..models import VehiclePosition
+from .auth import AuthConfig, build_router
 
 log = logging.getLogger(__name__)
 
@@ -151,6 +153,8 @@ async def _warm_start(pool: AsyncConnectionPool, state: LiveState) -> None:
 
 async def _safe_warm_start(pool: AsyncConnectionPool, state: LiveState) -> None:
     try:
+        async with pool.connection() as conn:
+            await apply_schema(conn)  # tabelas de utilizadores, mesmo sem o ingestor a correr
         await _warm_start(pool, state)
     except Exception as e:  # BD indisponível: o mapa enche-se só com o stream
         log.warning("warm start do mapa falhou: %s", e)
@@ -180,6 +184,11 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
 
     app = FastAPI(title="Carris Metropolitana Live", lifespan=lifespan)
     app.state.live = state
+    app.include_router(
+        build_router(
+            AuthConfig(session_days=settings.session_days, cookie_secure=settings.cookie_secure)
+        )
+    )
     # Frontend React (frontend/ → `npm run build` → src/cmlive/web/dist).
     dist = Path(settings.frontend_dist or str(resources.files("cmlive.web").joinpath("dist")))
     if (dist / "assets").is_dir():
@@ -203,6 +212,10 @@ def create_app(settings: Settings | None = None, with_background: bool = True) -
 
     @app.get("/analytics", response_class=HTMLResponse)
     async def analytics_page():
+        return _spa()
+
+    @app.get("/entrar", response_class=HTMLResponse)
+    async def login_page():
         return _spa()
 
     @app.get("/api/vehicles")
